@@ -18,12 +18,15 @@ import "strconv"
 // of key/value pairs.
 func Map(filename string, contents string) []mr.KeyValue {
 	// function to detect word separators.
+	// 定义了一个函数 ff，用于检测词的分隔符（非字母字符）。
 	ff := func(r rune) bool { return !unicode.IsLetter(r) }
 
 	// split contents into an array of words.
+	// 将内容划分为一个单词数组
 	words := strings.FieldsFunc(contents, ff)
 
 	kva := []mr.KeyValue{}
+	// 遍历这些单词，为每个单词生成一个键/值对，并将它们添加到切片 kva 中。
 	for _, w := range words {
 		kv := mr.KeyValue{w, "1"}
 		kva = append(kva, kv)

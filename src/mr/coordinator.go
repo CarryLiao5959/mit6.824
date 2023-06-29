@@ -8,11 +8,24 @@ import "net/http"
 
 
 type Coordinator struct {
-	// Your definitions here.
-
+	// add fields here
+	jobsDone bool
+	// tasks []Task // Task is a custom type representing a task to be done
+	// workers []WorkerStatus // WorkerStatus is a custom type representing the status of a worker
 }
 
+
 // Your code here -- RPC handlers for the worker to call.
+func (c *Coordinator) RequestHandler(args *RequestArgs, reply *RequestReply) error {
+	reply.WorkerRequestReply = "this is a request reply"
+	return nil
+}
+
+func (c *Coordinator) SetJobDone(args *JobDoneArgs, reply *JobDoneReply) error {
+	c.jobsDone = args.Status
+	reply.Success = true
+	return nil
+}
 
 //
 // an example RPC handler.
@@ -46,12 +59,13 @@ func (c *Coordinator) server() {
 // if the entire job has finished.
 //
 func (c *Coordinator) Done() bool {
-	ret := false
+	// ret := false
+	// ret := true
 
 	// Your code here.
+	
+	return c.jobsDone
 
-
-	return ret
 }
 
 //
@@ -66,5 +80,6 @@ func MakeCoordinator(files []string, nReduce int) *Coordinator {
 
 
 	c.server()
+	
 	return &c
 }

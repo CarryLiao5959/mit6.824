@@ -6,6 +6,12 @@ import "net/rpc"
 import "hash/fnv"
 
 
+type WorkerStatus struct {
+	// add fields here
+	coordinator *Coordinator
+}
+
+
 //
 // Map functions return a slice of KeyValue.
 //
@@ -32,10 +38,72 @@ func Worker(mapf func(string, string) []KeyValue,
 	reducef func(string, []string) string) {
 
 	// Your worker implementation here.
-
+	
 	// uncomment to send the Example RPC to the coordinator.
+	setJobDone(false)
 	// CallExample()
+	map()
+	callRequest()
+	setJobDone(true)
 
+}
+
+func map(filenames []string) {
+	mapf := loadPluginMap(os.Args[1])
+
+	for _, filename := range filenames {
+		file, err := os.Open(filename)
+		if err != nil {
+			log.Fatalf("cannot open %v", filename)
+		}
+		content, err := ioutil.ReadAll(file)
+		if err != nil {
+			log.Fatalf("cannot read %v", filename)
+		}
+		file.Close()
+		kva := mapf(filename, string(content))
+		intermediate = append(intermediate, kva...)
+	}
+
+}
+
+func setJobDone(done bool) {
+
+	args := JobDoneArgs{Status: done}
+	reply := JobDoneReply{}
+
+	ok := call("Coordinator.SetJobDone", &args, &reply)
+	if ok {
+		fmt.Println("Job done status set successfully")
+	} else {
+		fmt.Println("Failed to set job done status")
+	}
+}
+
+
+func callRequest() {
+
+	// declare an argument structure.
+	args := RequestArgs{}
+
+	// fill in the argument(s).
+	args.WorkerRequest = "this is a request"
+
+	// declare a reply structure.
+	reply := RequestReply{}
+
+	// send the RPC request, wait for the reply.
+	// the "Coordinator.Example" tells the
+	// receiving server that we'd like to call
+	// the Example() method of struct Coordinator.
+	ok := call("Coordinator.RequestHandler", &args, &reply)
+
+	if ok {
+		// reply.workerRequestReply
+		fmt.Printf("[reply.RequestReply] %v\n", reply.WorkerRequestReply)
+	} else {
+		fmt.Printf("[call failed!]\n")
+	}
 }
 
 //
@@ -59,6 +127,7 @@ func CallExample() {
 	// receiving server that we'd like to call
 	// the Example() method of struct Coordinator.
 	ok := call("Coordinator.Example", &args, &reply)
+
 	if ok {
 		// reply.Y should be 100.
 		fmt.Printf("reply.Y %v\n", reply.Y)
@@ -88,4 +157,26 @@ func call(rpcname string, args interface{}, reply interface{}) bool {
 
 	fmt.Println(err)
 	return false
+}
+
+// load the application Map and Reduce functions
+// from a plugin file, e.g. ../mrapps/wc.so
+// 接收一个字符串参数，表示插件文件的路径，
+// 并返回两个函数，一个是 Map 函数，另一个是 Reduce 函数。
+func loadPluginMap(filename string) (func(string, string) []mr.KeyValue) {
+	// 打开插件文件
+	p, err := plugin.Open(filename)
+	if err != nil {
+		log.Fatalf("cannot load plugin %v", filename)
+	}
+	// 从插件中查找名为 "Map" 的函数
+	xmapf, err := p.Lookup("Map")
+	if err != nil {
+		log.Fatalf("cannot find Map in %v", filename)
+	}
+	// 将查找到的 "Map" 函数强制转换为正确的类型，
+	// 这里的类型是 func(string, string) []mr.KeyValue，也就是接收两个字符串参数，返回 mr.KeyValue 切片的函数。
+	mapf := xmapf.(func(string, string) []mr.KeyValue)
+
+	return mapf
 }

@@ -23,11 +23,14 @@ func (a ByKey) Swap(i, j int)      { a[i], a[j] = a[j], a[i] }
 func (a ByKey) Less(i, j int) bool { return a[i].Key < a[j].Key }
 
 func main() {
+	
+	// 命令行参数至少有3个
 	if len(os.Args) < 3 {
 		fmt.Fprintf(os.Stderr, "Usage: mrsequential xxx.so inputfiles...\n")
 		os.Exit(1)
 	}
 
+	// 加载插件
 	mapf, reducef := loadPlugin(os.Args[1])
 
 	//
@@ -36,6 +39,8 @@ func main() {
 	// accumulate the intermediate Map output.
 	//
 	intermediate := []mr.KeyValue{}
+
+	// 对每个输入文件进行 Map 操作
 	for _, filename := range os.Args[2:] {
 		file, err := os.Open(filename)
 		if err != nil {
@@ -58,6 +63,7 @@ func main() {
 
 	sort.Sort(ByKey(intermediate))
 
+	// 创建一个输出文件 "mr-out-0"
 	oname := "mr-out-0"
 	ofile, _ := os.Create(oname)
 
@@ -65,6 +71,7 @@ func main() {
 	// call Reduce on each distinct key in intermediate[],
 	// and print the result to mr-out-0.
 	//
+	// 对 intermediate 中的每一组相同的键进行 Reduce 操作
 	i := 0
 	for i < len(intermediate) {
 		j := i + 1
@@ -88,16 +95,24 @@ func main() {
 
 // load the application Map and Reduce functions
 // from a plugin file, e.g. ../mrapps/wc.so
+// 接收一个字符串参数，表示插件文件的路径，
+// 并返回两个函数，一个是 Map 函数，另一个是 Reduce 函数。
 func loadPlugin(filename string) (func(string, string) []mr.KeyValue, func(string, []string) string) {
+	// 打开插件文件
 	p, err := plugin.Open(filename)
 	if err != nil {
 		log.Fatalf("cannot load plugin %v", filename)
 	}
+	// 从插件中查找名为 "Map" 的函数
 	xmapf, err := p.Lookup("Map")
 	if err != nil {
 		log.Fatalf("cannot find Map in %v", filename)
 	}
+	// 将查找到的 "Map" 函数强制转换为正确的类型，
+	// 这里的类型是 func(string, string) []mr.KeyValue，也就是接收两个字符串参数，返回 mr.KeyValue 切片的函数。
 	mapf := xmapf.(func(string, string) []mr.KeyValue)
+	
+	// 查找和转换 "Reduce" 函数
 	xreducef, err := p.Lookup("Reduce")
 	if err != nil {
 		log.Fatalf("cannot find Reduce in %v", filename)
