@@ -1,21 +1,25 @@
 package mr
 
-import "log"
-import "net"
-import "os"
-import "net/rpc"
-import "net/http"
-import "fmt"
+import (
+	"fmt"
+	"log"
+	"net"
+	"net/http"
+	"net/rpc"
+	"os"
+)
 
-type Task struct {
-	File   string
-	TaskID int
-}
+const (
+	MapNotDone = iota
+	ReduceNotDone
+	AllDone
+)
 
 type Coordinator struct {
 	// add fields here
 	// tasks []Task // Task is a custom type representing a task to be done
-	jobsDone      bool
+	TaskStep      int
+	NumJobsDone      int
 	Files         []string
 	MapTask       chan Task
 	NumMapTask    int
@@ -28,12 +32,20 @@ type Coordinator struct {
 func (c *Coordinator) RequestHandler(args *RequestArgs, reply *RequestReply) error {
 	reply.WorkerRequestReply = "this is a request reply"
 	reply.MyTask = <-c.MapTask
+	fmt.Println("[c.NumReduceTask]", c.NumReduceTask)
+	reply.NReduce = c.NumReduceTask
 	return nil
 }
 
 func (c *Coordinator) SetJobDone(args *JobDoneArgs, reply *JobDoneReply) error {
-	c.jobsDone = args.Status
-	reply.Success = true
+	if args.TaskDone == true{
+		c.NumJobsDone++
+		fmt.Println("[c.NumJobsDone]", c.NumJobsDone)
+		if c.NumJobsDone == len(c.Files) {
+            c.TaskStep=ReduceNotDone
+        }
+		reply.TaskSuccess.Type = Completed
+	}
 	return nil
 }
 
@@ -67,7 +79,7 @@ func (c *Coordinator) Done() bool {
 
 	// Your code here.
 
-	return c.jobsDone
+	return c.TaskStep == ReduceNotDone
 
 }
 
@@ -76,23 +88,30 @@ func (c *Coordinator) Done() bool {
 // nReduce is the number of reduce tasks to use.
 func MakeCoordinator(files []string, nReduce int) *Coordinator {
 	c := Coordinator{
-		jobsDone:      false,
+		TaskStep:      MapNotDone,
+		NumJobsDone:      0,
 		Files:         files,
-		MapTask:       make(chan Task,len(files)),
+		MapTask:       make(chan Task, len(files)),
 		NumMapTask:    3,
 		ReduceTask:    make(chan Task),
 		NumReduceTask: nReduce,
 	}
 
+	fmt.Println("filelen: ",len(files))
+	fmt.Println("NumJobsDone: ",c.NumJobsDone)
+
 	go func() {
-        for i, file := range files {
-            c.MapTask <- Task{File:file, TaskID:i}
-			fmt.Println(file,i)
-        }
-        //close(c.MapTask) 
-    }()
+		for i, file := range files {
+			c.MapTask <- Task{Type: MapWork, File: file, TaskID: i}
+			fmt.Println(file, i)
+		}
+		//close(c.MapTask)
+	}()
 
 	// Your code here.
+	if c.NumJobsDone == len(files){
+		c.TaskStep = AllDone
+	}
 
 	c.server()
 

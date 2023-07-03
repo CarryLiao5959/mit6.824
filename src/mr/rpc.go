@@ -9,6 +9,37 @@ package mr
 import "os"
 import "strconv"
 
+// Task
+const (
+	Idle = iota
+	InProgress
+	Completed
+)
+
+type Task struct {
+	Type       int
+	File       string
+	TaskID     int
+	TaskStatus int
+}
+
+// Worker
+const (
+	MapWork = iota
+	ReduceWork
+	Waiting
+	Exit
+)
+
+type WorkerInfo struct {
+	// add fields here
+	Type    int
+	Status  int
+	Id      int
+	File    string
+	nReduce int
+}
+
 //
 // example to show how to declare the arguments
 // and reply for an RPC.
@@ -29,18 +60,18 @@ type RequestArgs struct {
 }
 
 type RequestReply struct {
-	MyTask Task
+	MyTask             Task
+	NReduce            int
 	WorkerRequestReply string
 }
 
 type JobDoneArgs struct {
-	Status bool
+	TaskDone bool
 }
 
 type JobDoneReply struct {
-	Success bool
+	TaskSuccess Task
 }
-
 
 // // example RequestTask RPC
 // func (c *Coordinator) RequestTask(args *RequestTaskArgs, reply *RequestTaskReply) error {
@@ -51,9 +82,6 @@ type JobDoneReply struct {
 // func (c *Coordinator) SubmitTask(args *SubmitTaskArgs, reply *SubmitTaskReply) error {
 // 	// implementation goes here
 // }
-
-
-
 
 // Cook up a unique-ish UNIX-domain socket name
 // in /var/tmp, for the coordinator.
