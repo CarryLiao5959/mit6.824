@@ -1,14 +1,26 @@
 package mr
 
-import "fmt"
-import "log"
-import "net/rpc"
-import "hash/fnv"
+import (
+	"fmt"
+	"hash/fnv"
+	"io/ioutil"
+	"log"
+	"net/rpc"
+	"os"
+	"plugin"
+)
 
+const (
+    Idle = iota
+    InProgress
+    Completed
+)
 
-type WorkerStatus struct {
+type WorkerInfo struct {
 	// add fields here
-	coordinator *Coordinator
+	Status int
+	Id int
+	File string
 }
 
 
@@ -40,48 +52,19 @@ func Worker(mapf func(string, string) []KeyValue,
 	// Your worker implementation here.
 	
 	// uncomment to send the Example RPC to the coordinator.
-	setJobDone(false)
+	//setJobDone(false)
 	// CallExample()
-	map()
-	callRequest()
-	setJobDone(true)
+	myInfo := WorkerInfo{}
+
+	callRequest(&myInfo)
+
+	fmt.Println(myInfo.File, myInfo.Id)
+
+	//setJobDone(true)
 
 }
 
-func map(filenames []string) {
-	mapf := loadPluginMap(os.Args[1])
-
-	for _, filename := range filenames {
-		file, err := os.Open(filename)
-		if err != nil {
-			log.Fatalf("cannot open %v", filename)
-		}
-		content, err := ioutil.ReadAll(file)
-		if err != nil {
-			log.Fatalf("cannot read %v", filename)
-		}
-		file.Close()
-		kva := mapf(filename, string(content))
-		intermediate = append(intermediate, kva...)
-	}
-
-}
-
-func setJobDone(done bool) {
-
-	args := JobDoneArgs{Status: done}
-	reply := JobDoneReply{}
-
-	ok := call("Coordinator.SetJobDone", &args, &reply)
-	if ok {
-		fmt.Println("Job done status set successfully")
-	} else {
-		fmt.Println("Failed to set job done status")
-	}
-}
-
-
-func callRequest() {
+func callRequest(myInfo *WorkerInfo) {
 
 	// declare an argument structure.
 	args := RequestArgs{}
@@ -101,9 +84,69 @@ func callRequest() {
 	if ok {
 		// reply.workerRequestReply
 		fmt.Printf("[reply.RequestReply] %v\n", reply.WorkerRequestReply)
+		myInfo.Status = InProgress
+		myInfo.Id = reply.MyTask.TaskID
+		myInfo.File = reply.MyTask.File
 	} else {
 		fmt.Printf("[call failed!]\n")
 	}
+}
+
+//
+// send an RPC request to the coordinator, wait for the response.
+// usually returns true.
+// returns false if something goes wrong.
+//
+func call(rpcname string, args interface{}, reply interface{}) bool {
+	// c, err := rpc.DialHTTP("tcp", "127.0.0.1"+":1234")
+	sockname := coordinatorSock()
+	c, err := rpc.DialHTTP("unix", sockname)
+	if err != nil {
+		log.Fatal("dialing:", err)
+	}
+	defer c.Close()
+
+	err = c.Call(rpcname, args, reply)
+	if err == nil {
+		return true
+	}
+
+	fmt.Println(err)
+	return false
+}
+
+func setJobDone(done bool) {
+
+	args := JobDoneArgs{Status: done}
+	reply := JobDoneReply{}
+
+	ok := call("Coordinator.SetJobDone", &args, &reply)
+	if ok {
+		fmt.Println("Job done status set successfully")
+	} else {
+		fmt.Println("Failed to set job done status")
+	}
+}
+
+func Map(filenames []string) {
+	mapf := loadPluginMap(os.Args[1])
+
+	intermediate := []KeyValue{}
+
+	for _, filename := range filenames {
+		file, err := os.Open(filename)
+		if err != nil {
+			log.Fatalf("cannot open %v", filename)
+		}
+		content, err := ioutil.ReadAll(file)
+		if err != nil {
+			log.Fatalf("cannot read %v", filename)
+		}
+		file.Close()
+		kva := mapf(filename, string(content))
+		intermediate = append(intermediate, kva...)
+	}
+
 }
 
 //
@@ -136,34 +179,11 @@ func CallExample() {
 	}
 }
 
-//
-// send an RPC request to the coordinator, wait for the response.
-// usually returns true.
-// returns false if something goes wrong.
-//
-func call(rpcname string, args interface{}, reply interface{}) bool {
-	// c, err := rpc.DialHTTP("tcp", "127.0.0.1"+":1234")
-	sockname := coordinatorSock()
-	c, err := rpc.DialHTTP("unix", sockname)
-	if err != nil {
-		log.Fatal("dialing:", err)
-	}
-	defer c.Close()
-
-	err = c.Call(rpcname, args, reply)
-	if err == nil {
-		return true
-	}
-
-	fmt.Println(err)
-	return false
-}
-
 // load the application Map and Reduce functions
 // from a plugin file, e.g. ../mrapps/wc.so
 // 接收一个字符串参数，表示插件文件的路径，
 // 并返回两个函数，一个是 Map 函数，另一个是 Reduce 函数。
-func loadPluginMap(filename string) (func(string, string) []mr.KeyValue) {
+func loadPluginMap(filename string) (func(string, string) []KeyValue) {
 	// 打开插件文件
 	p, err := plugin.Open(filename)
 	if err != nil {
@@ -176,7 +196,7 @@ func loadPluginMap(filename string) (func(string, string) []mr.KeyValue) {
 	}
 	// 将查找到的 "Map" 函数强制转换为正确的类型，
 	// 这里的类型是 func(string, string) []mr.KeyValue，也就是接收两个字符串参数，返回 mr.KeyValue 切片的函数。
-	mapf := xmapf.(func(string, string) []mr.KeyValue)
+	mapf := xmapf.(func(string, string) []KeyValue)
 
 	return mapf
 }

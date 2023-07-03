@@ -29,6 +29,7 @@ type RequestArgs struct {
 }
 
 type RequestReply struct {
+	MyTask Task
 	WorkerRequestReply string
 }
 
