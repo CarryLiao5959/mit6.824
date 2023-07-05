@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"net/rpc"
 	"os"
+	"strconv"
 )
 
 // Coordinator Status
@@ -45,7 +46,6 @@ func MakeCoordinator(files []string, nReduce int) *Coordinator {
 	fmt.Println("[FileLen]", len(files))
 
 	go func() {
-		defer close(c.MapTask)
 		for i, file := range files {
 			c.MapTask <- Task{
 				Type:    Idle,
@@ -57,15 +57,27 @@ func MakeCoordinator(files []string, nReduce int) *Coordinator {
 		}
 	}()
 
-	if c.NumMapDone == len(files) {
-		c.Status = ReduceNotDone
-	}
+	c.server()
+
+	for c.NumMapDone < len(files) {}
+
+	c.Status = ReduceNotDone
+
+	go func() {
+		for i := 0 ; i < c.NReduce; i++ {
+			c.ReduceTask <- Task{
+				Type:    Idle,
+				File:    "mr-tmp-" + strconv.Itoa(i),
+				ID:      i,
+				NReduce: c.NReduce,
+			}
+			fmt.Println("mr-tmp-" + strconv.Itoa(i))
+		}
+	}()
 
 	if true {
 		c.Status = AllDone
 	}
-
-	c.server()
 
 	return &c
 }
@@ -92,28 +104,51 @@ func (c *Coordinator) server() {
 
 func (c *Coordinator) RequestTaskHandler(args *RequestTaskArgs, reply *RequestTaskReply) error {
 	reply.ReplyWords = "[RequestTaskHandler]"
-	select {
-	case data, ok := <-c.MapTask:
-		if !ok {
-			reply.ReplyWords = "[RequestTask Fail]"
-			reply.WorkerTask = Task{}
-		} else {
-			reply.ReplyWords = "[RequestTask Success]"
-			reply.WorkerTask = data
+	if c.Status == MapNotDone{
+		select {
+		case data, ok := <-c.MapTask:
+			if !ok {
+				reply.ReplyWords = "[RequestMapTask Fail]"
+				reply.WorkerTask = Task{}
+			} else {
+				reply.ReplyWords = "[RequestMapTask Success]"
+				reply.WorkerTask = data
+			}
+			fmt.Println(data.File)
 		}
-		fmt.Println(data.File)
-		return nil
+	}else if c.Status == ReduceNotDone{
+		select {
+        case data, ok := <-c.ReduceTask:
+            if!ok {
+                reply.ReplyWords = "[RequestReduceTask Fail]"
+                reply.WorkerTask = Task{}
+            } else {
+                reply.ReplyWords = "[RequestReduceTask Success]"
+                reply.WorkerTask = data
+            }
+            fmt.Println(data.File)
+        }
 	}
+	return nil
 }
 
-func (c *Coordinator) SetMapTaskDone(args *MapTaskDoneArgs, reply *MapTaskDoneReply) error {
+func (c *Coordinator) SetMapTaskDone(args *TaskDoneArgs, reply *TaskDoneReply) error {
 	if args.TaskDone {
-		c.NumMapDone++
-		fmt.Println("[NumJobsDone]", c.NumMapDone)
-		if c.NumMapDone == len(c.Files) {
-			c.Status = ReduceNotDone
+		if c.Status == MapNotDone{
+			c.NumMapDone++
+			fmt.Println("[NumMapDone]", c.NumMapDone)
+			if c.NumMapDone == len(c.Files) {
+				c.Status = ReduceNotDone
+			}
+			reply.WorkerTask.Type = Completed
+		}else if c.Status == ReduceNotDone{
+			c.NumReduceDone++
+            fmt.Println("[NumReduceDone]", c.NumReduceDone)
+            if c.NumReduceDone == c.NReduce {
+                c.Status = AllDone
+            }
+			reply.WorkerTask.Type = Completed
 		}
-		reply.WorkerTask.Type = Completed
 	}
 	return nil
 }

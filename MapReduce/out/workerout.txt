@@ -1,5 +1,5 @@
 [mrWorker]
-[RequestTask Success][MapWork]
+[RequestMapTask Success][MapWork]
 0 0
 [nReduce] 10
 [Store Success] mr-tmp-0-0
@@ -12,8 +12,9 @@
 [Store Success] mr-tmp-0-7
 [Store Success] mr-tmp-0-8
 [Store Success] mr-tmp-0-9
-[SetTaskDone Success]
-[RequestTask Success][MapWork]
+rpc: can't find method Coordinator.SetTaskDone
+[SetTaskDone Fail]
+[RequestMapTask Success][MapWork]
 0 0
 [nReduce] 10
 [Store Success] mr-tmp-1-0
@@ -26,8 +27,9 @@
 [Store Success] mr-tmp-1-7
 [Store Success] mr-tmp-1-8
 [Store Success] mr-tmp-1-9
-[SetTaskDone Success]
-[RequestTask Success][MapWork]
+rpc: can't find method Coordinator.SetTaskDone
+[SetTaskDone Fail]
+[RequestMapTask Success][MapWork]
 0 0
 [nReduce] 10
 [Store Success] mr-tmp-2-0
@@ -40,8 +42,9 @@
 [Store Success] mr-tmp-2-7
 [Store Success] mr-tmp-2-8
 [Store Success] mr-tmp-2-9
-[SetTaskDone Success]
-[RequestTask Success][MapWork]
+rpc: can't find method Coordinator.SetTaskDone
+[SetTaskDone Fail]
+[RequestMapTask Success][MapWork]
 0 0
 [nReduce] 10
 [Store Success] mr-tmp-3-0
@@ -54,8 +57,9 @@
 [Store Success] mr-tmp-3-7
 [Store Success] mr-tmp-3-8
 [Store Success] mr-tmp-3-9
-[SetTaskDone Success]
-[RequestTask Success][MapWork]
+rpc: can't find method Coordinator.SetTaskDone
+[SetTaskDone Fail]
+[RequestMapTask Success][MapWork]
 0 0
 [nReduce] 10
 [Store Success] mr-tmp-4-0
@@ -68,8 +72,9 @@
 [Store Success] mr-tmp-4-7
 [Store Success] mr-tmp-4-8
 [Store Success] mr-tmp-4-9
-[SetTaskDone Success]
-[RequestTask Success][MapWork]
+rpc: can't find method Coordinator.SetTaskDone
+[SetTaskDone Fail]
+[RequestMapTask Success][MapWork]
 0 0
 [nReduce] 10
 [Store Success] mr-tmp-5-0
@@ -82,8 +87,9 @@
 [Store Success] mr-tmp-5-7
 [Store Success] mr-tmp-5-8
 [Store Success] mr-tmp-5-9
-[SetTaskDone Success]
-[RequestTask Success][MapWork]
+rpc: can't find method Coordinator.SetTaskDone
+[SetTaskDone Fail]
+[RequestMapTask Success][MapWork]
 0 0
 [nReduce] 10
 [Store Success] mr-tmp-6-0
@@ -96,8 +102,9 @@
 [Store Success] mr-tmp-6-7
 [Store Success] mr-tmp-6-8
 [Store Success] mr-tmp-6-9
-[SetTaskDone Success]
-[RequestTask Success][MapWork]
+rpc: can't find method Coordinator.SetTaskDone
+[SetTaskDone Fail]
+[RequestMapTask Success][MapWork]
 0 0
 [nReduce] 10
 [Store Success] mr-tmp-7-0
@@ -110,6 +117,5 @@
 [Store Success] mr-tmp-7-7
 [Store Success] mr-tmp-7-8
 [Store Success] mr-tmp-7-9
-[SetTaskDone Success]
-[RequestTask Fail][Waiting]
-2 0
+rpc: can't find method Coordinator.SetTaskDone
+[SetTaskDone Fail]

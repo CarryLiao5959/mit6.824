@@ -49,11 +49,11 @@ type RequestTaskReply struct {
 	ReplyWords string
 }
 
-type MapTaskDoneArgs struct {
+type TaskDoneArgs struct {
 	TaskDone bool
 }
 
-type MapTaskDoneReply struct {
+type TaskDoneReply struct {
 	WorkerTask Task
 }
 

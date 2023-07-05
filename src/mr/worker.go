@@ -27,11 +27,12 @@ func Worker(mapf func(string, string) []KeyValue, reducef func(string, []string)
 				fmt.Println("[MapWork]")
 				fmt.Println(myWorkerInfo.Status, myWorkerInfo.ID)
 				MapAndStore(myWorkerInfo)
-				setMapTaskDone(true)
+				setTaskDone(true)
 			}
 		case ReduceWork:
 			{
 				fmt.Println("[ReduceWork]")
+				ReduceAndStore(myWorkerInfo)
 				fmt.Println(myWorkerInfo.Status, myWorkerInfo.ID)
 			}
 		case Waiting:
@@ -57,24 +58,34 @@ func callRequestTask(myWorkerInfo *WorkerInfo) {
 	ok := call("Coordinator.RequestTaskHandler", &args, &reply)
 	if ok {
 		fmt.Printf(reply.ReplyWords)
-		if reply.WorkerTask.File == "" {
-			myWorkerInfo.Status = Waiting
-		} else {
-			myWorkerInfo.Status = MapWork
-			myWorkerInfo.ID = 0
-			myWorkerInfo.WorkerTask = reply.WorkerTask
+		if myWorkerInfo.Status == MapWork{
+			if reply.WorkerTask.File == "" {
+				myWorkerInfo.Status = Waiting
+			} else {
+				myWorkerInfo.Status = MapWork
+				myWorkerInfo.ID = 0
+				myWorkerInfo.WorkerTask = reply.WorkerTask
+			}
+		}else if myWorkerInfo.Status == ReduceWork{
+			if reply.WorkerTask.File == "" {
+                myWorkerInfo.Status = Waiting
+            } else {
+                myWorkerInfo.Status = ReduceWork
+                myWorkerInfo.ID = 0
+                myWorkerInfo.WorkerTask = reply.WorkerTask
+            }
 		}
 	} else {
 		fmt.Printf("[callRequestTask Fail]\n")
 	}
 }
 
-func setMapTaskDone(done bool) {
+func setTaskDone(done bool) {
 
-	args := MapTaskDoneArgs{TaskDone: done}
-	reply := MapTaskDoneReply{}
+	args := TaskDoneArgs{TaskDone: done}
+	reply := TaskDoneReply{}
 
-	ok := call("Coordinator.SetMapTaskDone", &args, &reply)
+	ok := call("Coordinator.SetTaskDone", &args, &reply)
 	if ok {
 		fmt.Println("[SetTaskDone Success]")
 	} else {
@@ -173,6 +184,62 @@ func MapAndStore(myWorkerInfo WorkerInfo) {
 	myWorkerInfo.WorkerTask.Type = Completed
 }
 
+func ReduceAndStore(myWorkerInfo WorkerInfo) {
+	nReduce := myWorkerInfo.WorkerTask.NReduce
+
+	filenameprefix := myWorkerInfo.WorkerTask.File
+	reducef := loadPluginReduce(os.Args[1])
+	
+	intermediate := []KeyValue{}
+
+	for i := 0; i < nReduce; i++ {
+		filename := "../../MapReduce/result/" + filenameprefix + "-" + strconv.Itoa(i)
+		file, err := os.Open(filename)
+		if err != nil {
+			log.Fatalf("cannot open %v", filename)
+		}
+		dec := json.NewDecoder(file)
+		for {
+			var kv KeyValue
+			if err := dec.Decode(&kv); err != nil {
+				break
+			}
+			intermediate = append(intermediate, kv)
+		}
+		file.Close()
+	}
+	
+	sort.Sort(ByKey(intermediate))
+
+	// Reduce
+	i := 0
+	reduced := []KeyValue{}
+	for i < len(intermediate) {
+		j := i + 1
+		for j < len(intermediate) && intermediate[j].Key == intermediate[i].Key {
+			j++
+		}
+		values := []string{}
+		for k := i; k < j; k++ {
+			values = append(values, intermediate[k].Value)
+		}
+		output := reducef(intermediate[i].Key, values)
+
+		reduced = append(reduced, KeyValue{Key: intermediate[i].Key, Value: output})
+		i = j
+	}
+
+	// Store
+	index := myWorkerInfo.WorkerTask.ID
+	oname := "mr-out-" + strconv.Itoa(index)
+	ofile, _ := os.Create("../../MapReduce/result/" + oname)
+	fmt.Println("[Store Success]", oname)
+
+	ofile.Close()
+	
+	myWorkerInfo.WorkerTask.Type = Completed
+}
+
 
 func loadPlugin(filename string) (func(string, string) []KeyValue, func(string, []string) string) {
 	
@@ -207,7 +274,7 @@ func loadPluginMap(filename string) func(string, string) []KeyValue {
 	if err != nil {
 		log.Fatalf("cannot find Map in %v", filename)
 	}
-	
+
 	mapf := xmapf.(func(string, string) []KeyValue)
 	return mapf
 }
