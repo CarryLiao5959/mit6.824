@@ -3,7 +3,6 @@ package mr
 import (
 	"encoding/json"
 	"fmt"
-	"hash/fnv"
 	"io/ioutil"
 	"log"
 	"net/rpc"
@@ -14,105 +13,78 @@ import (
 	"time"
 )
 
-//
-// Map functions return a slice of KeyValue.
-//
-type KeyValue struct {
-	Key   string
-	Value string
-}
-
-//
-// use ihash(key) % NReduce to choose the reduce
-// task number for each KeyValue emitted by Map.
-//
-func ihash(key string) int {
-	h := fnv.New32a()
-	h.Write([]byte(key))
-	return int(h.Sum32() & 0x7fffffff)
-}
-
-
-//
 // main/mrworker.go calls this function.
-//
 func Worker(mapf func(string, string) []KeyValue, reducef func(string, []string) string) {
-
-	// Your worker implementation here.
-	flag:=true
+	flag := true
 
 	for flag {
-		// uncomment to send the Example RPC to the coordinator.
-		//setJobDone(false)
-		// CallExample()
-		myInfo := WorkerInfo{}
-		callRequest(&myInfo)
-		switch myInfo.Type{
+		myWorkerInfo := WorkerInfo{}
+		callRequestTask(&myWorkerInfo)
+
+		switch myWorkerInfo.Status {
 		case MapWork:
 			{
 				fmt.Println("[MapWork]")
-				fmt.Println(myInfo.Status, myInfo.File, myInfo.Id)
-				MapStore(myInfo)
-				setJobDone(true)
+				fmt.Println(myWorkerInfo.Status, myWorkerInfo.ID)
+				MapAndStore(myWorkerInfo)
+				setMapTaskDone(true)
 			}
 		case ReduceWork:
 			{
 				fmt.Println("[ReduceWork]")
-				fmt.Println(myInfo.Status, myInfo.File, myInfo.Id)
+				fmt.Println(myWorkerInfo.Status, myWorkerInfo.ID)
 			}
 		case Waiting:
 			{
-				fmt.Println("[Wait]")
-				fmt.Println(myInfo.Status, myInfo.File, myInfo.Id)
-				time.Sleep(time.Second)
+				fmt.Println("[Waiting]")
+				fmt.Println(myWorkerInfo.Status, myWorkerInfo.ID)
+				time.Sleep(10 * time.Second)
 			}
 		case Exit:
 			{
 				fmt.Println("[Exit]")
-                fmt.Println(myInfo.Status, myInfo.File, myInfo.Id)
-                flag=false
-        	}
+				fmt.Println(myWorkerInfo.Status, myWorkerInfo.ID)
+				flag = false
+			}
 		}
-		//setJobDone(true)
 	}
 }
 
-
-func callRequest(myInfo *WorkerInfo) {
-
-	// declare an argument structure.
-	args := RequestArgs{}
-
-	// fill in the argument(s).
-	args.WorkerRequest = "this is a request"
-
-	// declare a reply structure.
-	reply := RequestReply{}
-
-	// send the RPC request, wait for the reply.
-	// the "Coordinator.Example" tells the
-	// receiving server that we'd like to call
-	// the Example() method of struct Coordinator.
-	ok := call("Coordinator.RequestHandler", &args, &reply)
-
+func callRequestTask(myWorkerInfo *WorkerInfo) {
+	args := RequestTaskArgs{}
+	args.RequestWords = "[RequestWords]"
+	reply := RequestTaskReply{}
+	ok := call("Coordinator.RequestTaskHandler", &args, &reply)
 	if ok {
-		// reply.workerRequestReply
-		fmt.Printf("[reply.RequestReply] %v\n", reply.WorkerRequestReply)
-		myInfo.Status = InProgress
-		myInfo.Id = reply.MyTask.TaskID
-		myInfo.File = reply.MyTask.File
-		myInfo.nReduce = reply.NReduce
-		fmt.Println("[reply.nReduce]",reply.NReduce)
+		fmt.Printf(reply.ReplyWords)
+		if reply.WorkerTask.File == "" {
+			myWorkerInfo.Status = Waiting
+		} else {
+			myWorkerInfo.Status = MapWork
+			myWorkerInfo.ID = 0
+			myWorkerInfo.WorkerTask = reply.WorkerTask
+		}
 	} else {
-		fmt.Printf("[call failed!]\n")
+		fmt.Printf("[callRequestTask Fail]\n")
 	}
 }
 
-//
+func setMapTaskDone(done bool) {
+
+	args := MapTaskDoneArgs{TaskDone: done}
+	reply := MapTaskDoneReply{}
+
+	ok := call("Coordinator.SetMapTaskDone", &args, &reply)
+	if ok {
+		fmt.Println("[SetTaskDone Success]")
+	} else {
+		fmt.Println("[SetTaskDone Fail]")
+	}
+}
+
 // send an RPC request to the coordinator, wait for the response.
 // usually returns true.
 // returns false if something goes wrong.
-//
 func call(rpcname string, args interface{}, reply interface{}) bool {
 	// c, err := rpc.DialHTTP("tcp", "127.0.0.1"+":1234")
 	sockname := coordinatorSock()
@@ -131,19 +103,6 @@ func call(rpcname string, args interface{}, reply interface{}) bool {
 	return false
 }
 
-func setJobDone(done bool) {
-
-	args := JobDoneArgs{TaskDone: done}
-	reply := JobDoneReply{}
-
-	ok := call("Coordinator.SetJobDone", &args, &reply)
-	if ok {
-		fmt.Println("Job done status set successfully")
-	} else {
-		fmt.Println("Failed to set job done status")
-	}
-}
-
 // for sorting by key.
 type ByKey []KeyValue
 
@@ -152,13 +111,12 @@ func (a ByKey) Len() int           { return len(a) }
 func (a ByKey) Swap(i, j int)      { a[i], a[j] = a[j], a[i] }
 func (a ByKey) Less(i, j int) bool { return a[i].Key < a[j].Key }
 
-func MapStore(myInfo WorkerInfo) {
-	filename := myInfo.File
-	mapf,reducef := loadPlugin(os.Args[1])
-	//mapf := loadPluginMap(os.Args[1])
+func MapAndStore(myWorkerInfo WorkerInfo) {
+	nReduce := myWorkerInfo.WorkerTask.NReduce
 
-	intermediate := []KeyValue{}
-
+	filename := myWorkerInfo.WorkerTask.File
+	mapf, reducef := loadPlugin(os.Args[1])
+	
 	file, err := os.Open(filename)
 	if err != nil {
 		log.Fatalf("cannot open %v", filename)
@@ -168,58 +126,110 @@ func MapStore(myInfo WorkerInfo) {
 		log.Fatalf("cannot read %v", filename)
 	}
 	file.Close()
-	fmt.Println("[nReduce]",myInfo.nReduce)
+	fmt.Println("[nReduce]", nReduce)
 	
-	intermediate = mapf(filename, string(content))
-	
-	sort.Sort(ByKey(intermediate))
-	
-	// 对 intermediate 中的每一组相同的键进行 Reduce 操作
+	// Map
+	maped := []KeyValue{}
+	maped = mapf(filename, string(content))
+
+	sort.Sort(ByKey(maped))
+
+	// Reduce
 	i := 0
 	reduced := []KeyValue{}
-	for i < len(intermediate) {
+	for i < len(maped) {
 		j := i + 1
-		for j < len(intermediate) && intermediate[j].Key == intermediate[i].Key {
+		for j < len(maped) && maped[j].Key == maped[i].Key {
 			j++
 		}
 		values := []string{}
 		for k := i; k < j; k++ {
-			values = append(values, intermediate[k].Value)
+			values = append(values, maped[k].Value)
 		}
-		output := reducef(intermediate[i].Key, values)
+		output := reducef(maped[i].Key, values)
 
-		// this is the correct format for each line of Reduce output.
-		//fmt.Fprintf(ofile, "%v %v\n", intermediate[i].Key, output)
-		reduced = append(reduced, KeyValue{Key: intermediate[i].Key, Value: output})
-		
+		reduced = append(reduced, KeyValue{Key: maped[i].Key, Value: output})
 		i = j
 	}
 
-	// 创建一个长度为nReduce的二维切片
-	HashedKV := make([][]KeyValue, myInfo.nReduce)
+	// -> nReduce
+	HashedKV := make([][]KeyValue, nReduce)
 	for _, kv := range reduced {
-		HashedKV[ihash(kv.Key)%myInfo.nReduce] = append(HashedKV[ihash(kv.Key)%myInfo.nReduce], kv)
+		HashedKV[ihash(kv.Key)%nReduce] = append(HashedKV[ihash(kv.Key)%nReduce], kv)
 	}
 
-
-	for i := 0; i < myInfo.nReduce; i++ {
-		oname := "mr-tmp-" + strconv.Itoa(myInfo.Id) + "-" + strconv.Itoa(i)
-		ofile, _ := os.Create("../../MapReduce/result/"+oname)
-		fmt.Println("[Create success] MapReduce/result/",oname)
+	// Store
+	for i := 0; i < nReduce; i++ {
+		oname := "mr-tmp-" + strconv.Itoa(myWorkerInfo.WorkerTask.ID) + "-" + strconv.Itoa(i)
+		ofile, _ := os.Create("../../MapReduce/result/" + oname)
+		fmt.Println("[Store Success]", oname)
 		enc := json.NewEncoder(ofile)
 		for _, kv := range HashedKV[i] {
 			enc.Encode(kv)
 		}
 		ofile.Close()
 	}
-	myInfo.Type = Waiting
+
+	myWorkerInfo.WorkerTask.Type = Completed
 }
 
-//
+
+func loadPlugin(filename string) (func(string, string) []KeyValue, func(string, []string) string) {
+	
+	p, err := plugin.Open(filename)
+	if err != nil {
+		log.Fatalf("cannot load plugin %v", filename)
+	}
+	
+	xmapf, err := p.Lookup("Map")
+	if err != nil {
+		log.Fatalf("cannot find Map in %v", filename)
+	}
+
+	mapf := xmapf.(func(string, string) []KeyValue)
+
+	xreducef, err := p.Lookup("Reduce")
+	if err != nil {
+		log.Fatalf("cannot find Reduce in %v", filename)
+	}
+	reducef := xreducef.(func(string, []string) string)
+
+	return mapf, reducef
+}
+
+func loadPluginMap(filename string) func(string, string) []KeyValue {
+	p, err := plugin.Open(filename)
+	if err != nil {
+		log.Fatalf("cannot load plugin %v", filename)
+	}
+
+	xmapf, err := p.Lookup("Map")
+	if err != nil {
+		log.Fatalf("cannot find Map in %v", filename)
+	}
+	
+	mapf := xmapf.(func(string, string) []KeyValue)
+	return mapf
+}
+
+func loadPluginReduce(filename string) (func(string, []string) string) {
+	p, err := plugin.Open(filename)
+	if err != nil {
+		log.Fatalf("cannot load plugin %v", filename)
+	}
+
+	xreducef, err := p.Lookup("Reduce")
+	if err != nil {
+		log.Fatalf("cannot find Reduce in %v", filename)
+	}
+	reducef := xreducef.(func(string, []string) string)
+
+	return reducef
+}
+
 // example function to show how to make an RPC call to the coordinator.
 //
 // the RPC argument and reply types are defined in rpc.go.
-//
 func CallExample() {
 
 	// declare an argument structure.
@@ -245,40 +255,3 @@ func CallExample() {
 	}
 }
 
-func loadPlugin(filename string) (func(string, string) []KeyValue, func(string, []string) string) {
-	// 打开插件文件
-	p, err := plugin.Open(filename)
-	if err != nil {
-		log.Fatalf("cannot load plugin %v", filename)
-	}
-	// 从插件中查找名为 "Map" 的函数
-	xmapf, err := p.Lookup("Map")
-	if err != nil {
-		log.Fatalf("cannot find Map in %v", filename)
-	}
-	// 将查找到的 "Map" 函数强制转换为正确的类型，
-	// 这里的类型是 func(string, string) []mr.KeyValue，也就是接收两个字符串参数，返回 mr.KeyValue 切片的函数。
-	mapf := xmapf.(func(string, string) []KeyValue)
-	
-	// 查找和转换 "Reduce" 函数
-	xreducef, err := p.Lookup("Reduce")
-	if err != nil {
-		log.Fatalf("cannot find Reduce in %v", filename)
-	}
-	reducef := xreducef.(func(string, []string) string)
-
-	return mapf, reducef
-}
-
-func loadPluginMap(filename string) (func(string, string) []KeyValue) {
-	p, err := plugin.Open(filename)
-	if err != nil {
-		log.Fatalf("cannot load plugin %v", filename)
-	}
-	xmapf, err := p.Lookup("Map")
-	if err != nil {
-		log.Fatalf("cannot find Map in %v", filename)
-	}
-	mapf := xmapf.(func(string, string) []KeyValue)
-	return mapf
-}

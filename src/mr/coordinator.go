@@ -9,6 +9,7 @@ import (
 	"os"
 )
 
+// Coordinator Status
 const (
 	MapNotDone = iota
 	ReduceNotDone
@@ -16,45 +17,63 @@ const (
 )
 
 type Coordinator struct {
-	// add fields here
-	// tasks []Task // Task is a custom type representing a task to be done
-	TaskStep      int
-	NumJobsDone      int
+	Status        int
 	Files         []string
 	MapTask       chan Task
-	NumMapTask    int
+	NumMapDone    int
 	ReduceTask    chan Task
-	NumReduceTask int
-	// workers []WorkerStatus // WorkerStatus is a custom type representing the status of a worker
+	NumReduceDone int
+	NReduce       int
+	Workers       chan WorkerInfo
 }
 
-// Your code here -- RPC handlers for the worker to call.
-func (c *Coordinator) RequestHandler(args *RequestArgs, reply *RequestReply) error {
-	reply.WorkerRequestReply = "this is a request reply"
-	reply.MyTask = <-c.MapTask
-	fmt.Println("[c.NumReduceTask]", c.NumReduceTask)
-	reply.NReduce = c.NumReduceTask
-	return nil
-}
-
-func (c *Coordinator) SetJobDone(args *JobDoneArgs, reply *JobDoneReply) error {
-	if args.TaskDone == true{
-		c.NumJobsDone++
-		fmt.Println("[c.NumJobsDone]", c.NumJobsDone)
-		if c.NumJobsDone == len(c.Files) {
-            c.TaskStep=ReduceNotDone
-        }
-		reply.TaskSuccess.Type = Completed
+// create a Coordinator.
+// main/mrcoordinator.go calls this function.
+// nReduce is the number of reduce tasks to use.
+func MakeCoordinator(files []string, nReduce int) *Coordinator {
+	c := Coordinator{
+		Status:        MapNotDone,
+		Files:         files,
+		MapTask:       make(chan Task, 10),
+		NumMapDone:    0,
+		ReduceTask:    make(chan Task, nReduce),
+		NumReduceDone: 0,
+		NReduce:       nReduce,
+		Workers:       make(chan WorkerInfo, 10),
 	}
-	return nil
+
+	fmt.Println("[FileLen]", len(files))
+
+	go func() {
+		defer close(c.MapTask)
+		for i, file := range files {
+			c.MapTask <- Task{
+				Type:    Idle,
+				File:    file,
+				ID:      i,
+				NReduce: c.NReduce,
+			}
+			fmt.Println(file, i)
+		}
+	}()
+
+	if c.NumMapDone == len(files) {
+		c.Status = ReduceNotDone
+	}
+
+	if true {
+		c.Status = AllDone
+	}
+
+	c.server()
+
+	return &c
 }
 
-// an example RPC handler.
-//
-// the RPC argument and reply types are defined in rpc.go.
-func (c *Coordinator) Example(args *ExampleArgs, reply *ExampleReply) error {
-	reply.Y = args.X + 1
-	return nil
+// main/mrcoordinator.go calls Done() periodically to find out
+// if the entire job has finished.
+func (c *Coordinator) Done() bool {
+	return c.Status == ReduceNotDone
 }
 
 // start a thread that listens for RPCs from worker.go
@@ -71,49 +90,38 @@ func (c *Coordinator) server() {
 	go http.Serve(l, nil)
 }
 
-// main/mrcoordinator.go calls Done() periodically to find out
-// if the entire job has finished.
-func (c *Coordinator) Done() bool {
-	// ret := false
-	// ret := true
-
-	// Your code here.
-
-	return c.TaskStep == ReduceNotDone
-
+func (c *Coordinator) RequestTaskHandler(args *RequestTaskArgs, reply *RequestTaskReply) error {
+	reply.ReplyWords = "[RequestTaskHandler]"
+	select {
+	case data, ok := <-c.MapTask:
+		if !ok {
+			reply.ReplyWords = "[RequestTask Fail]"
+			reply.WorkerTask = Task{}
+		} else {
+			reply.ReplyWords = "[RequestTask Success]"
+			reply.WorkerTask = data
+		}
+		fmt.Println(data.File)
+		return nil
+	}
 }
 
-// create a Coordinator.
-// main/mrcoordinator.go calls this function.
-// nReduce is the number of reduce tasks to use.
-func MakeCoordinator(files []string, nReduce int) *Coordinator {
-	c := Coordinator{
-		TaskStep:      MapNotDone,
-		NumJobsDone:      0,
-		Files:         files,
-		MapTask:       make(chan Task, len(files)),
-		NumMapTask:    3,
-		ReduceTask:    make(chan Task),
-		NumReduceTask: nReduce,
-	}
-
-	fmt.Println("filelen: ",len(files))
-	fmt.Println("NumJobsDone: ",c.NumJobsDone)
-
-	go func() {
-		for i, file := range files {
-			c.MapTask <- Task{Type: MapWork, File: file, TaskID: i}
-			fmt.Println(file, i)
+func (c *Coordinator) SetMapTaskDone(args *MapTaskDoneArgs, reply *MapTaskDoneReply) error {
+	if args.TaskDone {
+		c.NumMapDone++
+		fmt.Println("[NumJobsDone]", c.NumMapDone)
+		if c.NumMapDone == len(c.Files) {
+			c.Status = ReduceNotDone
 		}
-		//close(c.MapTask)
-	}()
-
-	// Your code here.
-	if c.NumJobsDone == len(files){
-		c.TaskStep = AllDone
+		reply.WorkerTask.Type = Completed
 	}
+	return nil
+}
 
-	c.server()
-
-	return &c
+// an example RPC handler.
+//
+// the RPC argument and reply types are defined in rpc.go.
+func (c *Coordinator) Example(args *ExampleArgs, reply *ExampleReply) error {
+	reply.Y = args.X + 1
+	return nil
 }
