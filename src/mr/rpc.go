@@ -23,6 +23,7 @@ type Task struct {
 	Type    int
 	File    string
 	ID      int
+	NMap    int
 	NReduce int
 }
 
@@ -45,8 +46,8 @@ type RequestTaskArgs struct {
 }
 
 type RequestTaskReply struct {
-	WorkerTask Task
-	ReplyWords string
+	WorkerInfoReply WorkerInfo
+	ReplyWords      string
 }
 
 type TaskDoneArgs struct {
@@ -54,7 +55,7 @@ type TaskDoneArgs struct {
 }
 
 type TaskDoneReply struct {
-	WorkerTask Task
+	TaskWorker WorkerInfo
 }
 
 // Map functions return a slice of KeyValue.
