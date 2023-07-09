@@ -8,7 +8,10 @@ import (
 	"net/rpc"
 	"os"
 	"strconv"
+	"sync"
 )
+
+var mu sync.Mutex
 
 // Coordinator Status
 const (
@@ -80,11 +83,10 @@ func MakeCoordinator(files []string, nReduce int) *Coordinator {
 
 	fmt.Println("[nReduce]", nReduce)
 
-	for c.NumReduceDone < nReduce {}
+	for c.NumReduceDone < nReduce {
+	}
 
 	close(c.ReduceTask)
-
-	c.Status = AllDone
 
 	return &c
 }
@@ -110,16 +112,18 @@ func (c *Coordinator) server() {
 }
 
 func (c *Coordinator) RequestTaskHandler(args *RequestTaskArgs, reply *RequestTaskReply) error {
+	fmt.Println("[RequestTaskHandler c.Status]", c.Status)
+	mu.Lock()
+	defer mu.Unlock()
 	if c.Status == MapNotDone {
 		select {
 		case data, ok := <-c.MapTask:
+			reply.WorkerInfoReply.Status = MapWork
 			if !ok {
 				reply.ReplyWords = "[RequestMapTask Fail]"
-				reply.WorkerInfoReply.Status = Waiting
-				reply.WorkerInfoReply.WorkerTask = Task{}
+				reply.WorkerInfoReply.WorkerTask = Task{NReduce: c.NReduce}
 			} else {
 				reply.ReplyWords = "[RequestMapTask Success]"
-				reply.WorkerInfoReply.Status = MapWork
 				reply.WorkerInfoReply.WorkerTask = data
 			}
 			fmt.Println("[data.File]", data.File)
@@ -127,13 +131,12 @@ func (c *Coordinator) RequestTaskHandler(args *RequestTaskArgs, reply *RequestTa
 	} else if c.Status == ReduceNotDone {
 		select {
 		case data, ok := <-c.ReduceTask:
+			reply.WorkerInfoReply.Status = ReduceWork
 			if !ok {
 				reply.ReplyWords = "[RequestReduceTask Fail]"
-				reply.WorkerInfoReply.Status = Waiting
-				reply.WorkerInfoReply.WorkerTask = Task{}
+				reply.WorkerInfoReply.WorkerTask = Task{NReduce: c.NReduce}
 			} else {
 				reply.ReplyWords = "[RequestReduceTask Success]"
-				reply.WorkerInfoReply.Status = ReduceWork
 				reply.WorkerInfoReply.WorkerTask = data
 			}
 			fmt.Println("[data.File]", data.File)
@@ -141,11 +144,14 @@ func (c *Coordinator) RequestTaskHandler(args *RequestTaskArgs, reply *RequestTa
 	} else if c.Status == AllDone {
 		reply.ReplyWords = "[RequestReduceTask AllDone]"
 		reply.WorkerInfoReply.Status = AllDone
+		reply.WorkerInfoReply.WorkerTask = Task{NReduce: c.NReduce}
 	}
 	return nil
 }
 
 func (c *Coordinator) SetTaskDone(args *TaskDoneArgs, reply *TaskDoneReply) error {
+	mu.Lock()
+	defer mu.Unlock()
 	if args.TaskDone {
 		if c.Status == MapNotDone {
 			c.NumMapDone++
@@ -160,7 +166,10 @@ func (c *Coordinator) SetTaskDone(args *TaskDoneArgs, reply *TaskDoneReply) erro
 			fmt.Println("[NumReduceDone]", c.NumReduceDone)
 			if c.NumReduceDone == c.NReduce {
 				fmt.Println("[OMG] c.NumReduceDone == c.NReduce")
+				reply.TaskWorker.WorkerTask.NReduce = c.NReduce
 				reply.TaskWorker.Status = Exit
+			}
+			if c.NumReduceDone == c.NReduce+1 {
 				c.Status = AllDone
 			}
 			reply.TaskWorker.WorkerTask.Type = Completed

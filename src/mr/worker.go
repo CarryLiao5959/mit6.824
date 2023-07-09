@@ -1,6 +1,7 @@
 package mr
 
 import (
+	"bufio"
 	"encoding/json"
 	"fmt"
 	"io/ioutil"
@@ -10,6 +11,7 @@ import (
 	"plugin"
 	"sort"
 	"strconv"
+	"strings"
 	"time"
 )
 
@@ -20,7 +22,8 @@ func Worker(mapf func(string, string) []KeyValue, reducef func(string, []string)
 	for flag {
 		myWorkerInfo := WorkerInfo{}
 		callRequestTask(&myWorkerInfo)
-
+		fmt.Println("[nReduce]",myWorkerInfo.WorkerTask.NReduce)
+		LOOP:
 		switch myWorkerInfo.Status {
 		case MapWork:
 			{
@@ -35,17 +38,21 @@ func Worker(mapf func(string, string) []KeyValue, reducef func(string, []string)
 				fmt.Println(myWorkerInfo.Status, myWorkerInfo.ID)
 				ReduceAndStore(myWorkerInfo)
 				setTaskDone(true, &myWorkerInfo)
+				if myWorkerInfo.Status == Exit{
+					goto LOOP
+				}
 			}
 		case Waiting:
 			{
 				fmt.Println("[Waiting]")
 				fmt.Println(myWorkerInfo.Status, myWorkerInfo.ID)
-				time.Sleep(10 * time.Second)
+				time.Sleep(time.Second)
 			}
 		case Exit:
 			{
 				fmt.Println("[Exit]")
 				fmt.Println(myWorkerInfo.Status, myWorkerInfo.ID)
+				setTaskDone(true, &myWorkerInfo)
 				flag = false
 			}
 		}
@@ -66,19 +73,19 @@ func callRequestTask(myWorkerInfo *WorkerInfo) {
 			} else {
 				myWorkerInfo.Status = MapWork
 				myWorkerInfo.ID = 0
-				myWorkerInfo.WorkerTask = reply.WorkerInfoReply.WorkerTask
 			}
 		} else if reply.WorkerInfoReply.Status == ReduceWork {
 			if reply.WorkerInfoReply.WorkerTask.File == "" {
-				myWorkerInfo.Status = Exit
+				myWorkerInfo.Status = Waiting
 			} else {
 				myWorkerInfo.Status = ReduceWork
 				myWorkerInfo.ID = 0
-				myWorkerInfo.WorkerTask = reply.WorkerInfoReply.WorkerTask
 			}
 		} else if reply.WorkerInfoReply.Status == AllDone {
 			myWorkerInfo.Status = Exit
 		}
+		myWorkerInfo.WorkerTask = reply.WorkerInfoReply.WorkerTask
+		fmt.Println("[callRequestTask nReduce]",reply.WorkerInfoReply.WorkerTask.NReduce)
 	} else {
 		fmt.Printf("[callRequestTask Fail]\n")
 	}
@@ -93,11 +100,11 @@ func setTaskDone(done bool, myWorkerInfo *WorkerInfo) {
 
 	ok := call("Coordinator.SetTaskDone", &args, &reply)
 	if ok {
+		myWorkerInfo.Status = reply.TaskWorker.Status
 		fmt.Println("[myWorkerInfo.Status]", myWorkerInfo.Status)
 		if myWorkerInfo.Status == Exit {
 			fmt.Println("[OMG] myWorkerInfo.Status == Exit")
 		}
-		myWorkerInfo.Status = reply.TaskWorker.Status
 	} else {
 		fmt.Println("[SetTaskDone Fail]")
 	}
@@ -182,7 +189,9 @@ func MapAndStore(myWorkerInfo WorkerInfo) {
 	// Store
 	for i := 0; i < nReduce; i++ {
 		oname := "mr-tmp-" + strconv.Itoa(myWorkerInfo.WorkerTask.ID) + "-" + strconv.Itoa(i)
-		ofile, _ := os.Create("../../MapReduce/result/" + oname)
+		ofile, _ := os.Create(oname)
+		// ofile, _ := os.Create("../../MapReduce/result/" + oname)
+		// ofile, _ := os.Create("./mr-tmp/" + oname)
 		fmt.Println("[Store Success]", oname)
 		enc := json.NewEncoder(ofile)
 		for _, kv := range HashedKV[i] {
@@ -200,12 +209,14 @@ func ReduceAndStore(myWorkerInfo WorkerInfo) {
 	id := myWorkerInfo.WorkerTask.ID
 
 	filenameprefix := myWorkerInfo.WorkerTask.File
-	reducef := loadPluginReduce(os.Args[1])
+	// reducef := loadPluginReduce(os.Args[1])
 
 	intermediate := []KeyValue{}
 
 	for i := 0; i < nMap; i++ {
-		filename := "../../MapReduce/result/" + filenameprefix + strconv.Itoa(i) + "-" + strconv.Itoa(id)
+		filename := filenameprefix + strconv.Itoa(i) + "-" + strconv.Itoa(id)
+		// filename := "../../MapReduce/result/" + filenameprefix + strconv.Itoa(i) + "-" + strconv.Itoa(id)
+		// filename := "./mr-tmp/" + filenameprefix + strconv.Itoa(i) + "-" + strconv.Itoa(id)
 		fmt.Println("[Reduce Open]", filename)
 		file, err := os.Open(filename)
 		if err != nil {
@@ -236,22 +247,89 @@ func ReduceAndStore(myWorkerInfo WorkerInfo) {
 		for k := i; k < j; k++ {
 			values = append(values, intermediate[k].Value)
 		}
-		output := reducef(intermediate[i].Key, values)
 
-		reduced = append(reduced, KeyValue{Key: intermediate[i].Key, Value: output})
+		sum := 0
+		OuterLoop:
+		for _, v := range values {
+			for _, runeValue := range v {
+				if runeValue < '0' || runeValue > '9' {
+					break OuterLoop
+				}
+			}
+			val, err := strconv.Atoi(v)
+			if err != nil {
+				log.Fatalf("[ReduceAndStore] Cannot convert string to integer: %v", err)
+			}
+			sum += val
+		}
+		reduced = append(reduced, KeyValue{Key: intermediate[i].Key, Value: strconv.Itoa(sum)})
+
 		i = j
 	}
 
 	// Store
 	index := myWorkerInfo.WorkerTask.ID
 	oname := "mr-out-" + strconv.Itoa(index)
-	ofile, _ := os.Create("../../MapReduce/result/" + oname)
+	ofile, err := os.Create(oname)
+	// ofile, err := os.Create("../../MapReduce/result/" + oname)
+	// ofile, err := os.Create("./mr-tmp/" + oname)
+	if err != nil {
+		log.Fatalf("cannot create %v", oname)
+	}
+	defer ofile.Close()
 	fmt.Println("[Store Success]", oname)
 
-	ofile.Close()
+	for _, kv := range reduced {
+		_, err := fmt.Fprintf(ofile, "%v %v\n", kv.Key, kv.Value)
+		if err != nil {
+			log.Fatalf("cannot write to %v", oname)
+		}
+	}
 
 	myWorkerInfo.WorkerTask.Type = Completed
 }
+
+func MergeFile(nReduce int){
+	intermediate := []KeyValue{}
+
+	for i:=0 ; i < nReduce; i++ {
+		filename := "mr-out-" + strconv.Itoa(i)
+		// filename := "../../MapReduce/result/mr-out-" + strconv.Itoa(i)
+		// filename := "./mr-tmp/mr-out-" + strconv.Itoa(i)
+		file, err := os.Open(filename)
+		if err != nil {
+			log.Fatalf("cannot open %v", filename)
+		}
+		scanner := bufio.NewScanner(file)
+		for scanner.Scan() {
+			line := scanner.Text()
+			parts := strings.SplitN(line, " ", 2)
+			if len(parts) != 2 {
+				log.Fatalf("invalid line in %v: %v", filename, line)
+			}
+			intermediate = append(intermediate, KeyValue{Key: parts[0], Value: parts[1]})
+		}
+		if err := scanner.Err(); err != nil {
+			log.Fatalf("cannot read %v: %v", filename, err)
+		}
+		file.Close()
+	}
+
+	sort.Sort(ByKey(intermediate))
+
+	oname := "mr-wc-all"
+	// oname := "../../MapReduce/result/mr-wc-all"
+	// oname := "./mr-tmp/mr-wc-all"
+	ofile, err := os.Create(oname)
+	if err != nil {
+		log.Fatalf("cannot create %v: %v", oname, err)
+	}
+	for _, kv := range intermediate {
+		fmt.Fprintf(ofile, "%v %v\n", kv.Key, kv.Value)
+	}
+	ofile.Close()
+}
+
 
 func loadPlugin(filename string) (func(string, string) []KeyValue, func(string, []string) string) {
 
