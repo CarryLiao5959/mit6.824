@@ -1,14 +1,15 @@
 package mr
 
 import (
+	"errors"
 	"fmt"
 	"log"
 	"net"
 	"net/http"
 	"net/rpc"
 	"os"
-	"strconv"
 	"sync"
+	"time"
 )
 
 var mu sync.Mutex
@@ -28,7 +29,9 @@ type Coordinator struct {
 	ReduceTask    chan Task
 	NumReduceDone int
 	NReduce       int
-	Workers       chan WorkerInfo
+	TaskState     []Task
+	TaskStateR    []Task
+	Mutex         sync.Mutex
 }
 
 // create a Coordinator.
@@ -43,50 +46,26 @@ func MakeCoordinator(files []string, nReduce int) *Coordinator {
 		ReduceTask:    make(chan Task, nReduce),
 		NumReduceDone: 0,
 		NReduce:       nReduce,
-		Workers:       make(chan WorkerInfo, 10),
+		TaskState:     make([]Task, len(files)),
+		TaskStateR:    make([]Task, nReduce),
 	}
-
-	fmt.Println("[FileLen]", len(files))
-
-	go func() {
-		for i, file := range files {
-			c.MapTask <- Task{
-				Type:    Idle,
-				File:    file,
-				ID:      i,
-				NReduce: c.NReduce,
-			}
-			fmt.Println(file, i)
+	for i := range c.TaskState {
+		c.TaskState[i].TaskStatus = Idle
+	}
+	for i := 0; i < c.NReduce; i++{
+		c.TaskStateR[i].TaskStatus = Idle
+		task := Task{
+			TaskStatus: Idle,
+			File:       "mr-tmp-",
+			ID:         i,
+			NMap:       len(c.Files),
+			NReduce:    c.NReduce,
 		}
-	}()
+		c.ReduceTask <- task
+		fmt.Println("[Create ReduceTask]", task.ID, task.File)
+	}
 
 	c.server()
-
-	for c.NumMapDone < len(files) {
-	}
-	close(c.MapTask)
-
-	c.Status = ReduceNotDone
-
-	go func() {
-		for i := 0; i < c.NReduce; i++ {
-			c.ReduceTask <- Task{
-				Type:    Idle,
-				File:    "mr-tmp-",
-				ID:      i,
-				NMap:    len(files),
-				NReduce: c.NReduce,
-			}
-			fmt.Println("mr-tmp-" + strconv.Itoa(i))
-		}
-	}()
-
-	fmt.Println("[nReduce]", nReduce)
-
-	for c.NumReduceDone < nReduce {
-	}
-
-	close(c.ReduceTask)
 
 	return &c
 }
@@ -94,7 +73,64 @@ func MakeCoordinator(files []string, nReduce int) *Coordinator {
 // main/mrcoordinator.go calls Done() periodically to find out
 // if the entire job has finished.
 func (c *Coordinator) Done() bool {
-	return c.Status == AllDone
+	ret := false
+	finished := true
+	c.Mutex.Lock()
+	defer c.Mutex.Unlock()
+	for i, task := range c.TaskState {
+		switch task.TaskStatus {
+		case Idle:
+			// task is ready
+			finished = false
+			c.addTask(i)
+		case InProgress:
+			// task is running
+			finished = false
+			c.checkTask(i)
+		case Completed:
+		default:
+			panic("[Task State Error]")
+		}
+	}
+	if finished {
+		fmt.Println("[finished]")
+		if c.Status == MapNotDone {
+			fmt.Println("[c.Status == MapNotDone]")
+			close(c.MapTask)
+			c.Status = ReduceNotDone
+		} else {
+			fmt.Println("[AllDone]")
+			c.Status = AllDone
+			close(c.ReduceTask)
+		}
+	}
+	ret = c.Status == AllDone
+	return ret
+}
+
+// add Task to channel
+func (c *Coordinator) addTask(taskIndex int) {
+	c.TaskState[taskIndex].TaskStatus = Idle
+	task := Task{
+		TaskStatus: Idle,
+		File:       "",
+		ID:         taskIndex,
+		NMap:       len(c.Files),
+		NReduce:    c.NReduce,
+	}
+	if c.Status == MapNotDone {
+		task.File = c.Files[taskIndex]
+	}
+	c.MapTask <- task
+}
+
+// check whether timeout
+func (c *Coordinator) checkTask(taskIndex int) {
+	timeDuration := time.Now().Sub(c.TaskState[taskIndex].StartTime)
+	if timeDuration > MaxTaskRunTime {
+		// if timeout: add to task channel back
+		c.addTask(taskIndex)
+	}
 }
 
 // start a thread that listens for RPCs from worker.go
@@ -113,66 +149,66 @@ func (c *Coordinator) server() {
 
 func (c *Coordinator) RequestTaskHandler(args *RequestTaskArgs, reply *RequestTaskReply) error {
 	fmt.Println("[RequestTaskHandler c.Status]", c.Status)
-	mu.Lock()
-	defer mu.Unlock()
+	if !args.WorkerAlive {
+		return errors.New("[RequestTaskHandler] the Worker is offline")
+	}
 	if c.Status == MapNotDone {
-		select {
-		case data, ok := <-c.MapTask:
-			reply.WorkerInfoReply.Status = MapWork
-			if !ok {
-				reply.ReplyWords = "[RequestMapTask Fail]"
-				reply.WorkerInfoReply.WorkerTask = Task{NReduce: c.NReduce}
-			} else {
-				reply.ReplyWords = "[RequestMapTask Success]"
-				reply.WorkerInfoReply.WorkerTask = data
-			}
-			fmt.Println("[data.File]", data.File)
+		task, ok := <-c.MapTask
+		reply.WorkerStatus = MapWork
+		if ok {
+			reply.ReplyWords = "[RequestMapTask Success]"
+			c.TaskState[task.ID].TaskStatus = InProgress
+			c.TaskState[task.ID].StartTime = time.Now()
+			reply.WorkerTask = task
+		} else {
+			reply.ReplyWords = "[RequestMapTask Fail]"
+			reply.WorkerTask = Task{NReduce: c.NReduce}
 		}
 	} else if c.Status == ReduceNotDone {
-		select {
-		case data, ok := <-c.ReduceTask:
-			reply.WorkerInfoReply.Status = ReduceWork
-			if !ok {
-				reply.ReplyWords = "[RequestReduceTask Fail]"
-				reply.WorkerInfoReply.WorkerTask = Task{NReduce: c.NReduce}
-			} else {
-				reply.ReplyWords = "[RequestReduceTask Success]"
-				reply.WorkerInfoReply.WorkerTask = data
-			}
-			fmt.Println("[data.File]", data.File)
+		task, ok := <-c.ReduceTask
+		reply.WorkerStatus = ReduceWork
+		if ok {
+			reply.ReplyWords = "[RequestReduceTask Success]"
+			c.TaskStateR[task.ID].TaskStatus = InProgress
+			c.TaskStateR[task.ID].StartTime = time.Now()
+			reply.WorkerTask = task
+		} else {
+			reply.ReplyWords = "[RequestReduceTask Fail]"
+			reply.WorkerTask = Task{NReduce: c.NReduce}
 		}
 	} else if c.Status == AllDone {
 		reply.ReplyWords = "[RequestReduceTask AllDone]"
-		reply.WorkerInfoReply.Status = AllDone
-		reply.WorkerInfoReply.WorkerTask = Task{NReduce: c.NReduce}
+		reply.WorkerStatus = AllDone
 	}
 	return nil
 }
 
 func (c *Coordinator) SetTaskDone(args *TaskDoneArgs, reply *TaskDoneReply) error {
+	if !args.WorkerAlive {
+		reply.ACK = false
+		return errors.New("[SetTaskDone] the Worker is offline")
+	}
 	mu.Lock()
 	defer mu.Unlock()
 	if args.TaskDone {
 		if c.Status == MapNotDone {
+			c.TaskState[args.TaskID].TaskStatus = Completed
 			c.NumMapDone++
 			fmt.Println("[NumMapDone]", c.NumMapDone)
 			if c.NumMapDone == len(c.Files) {
-				reply.TaskWorker.Status = ReduceWork
 				c.Status = ReduceNotDone
 			}
-			reply.TaskWorker.WorkerTask.Type = Completed
 		} else if c.Status == ReduceNotDone {
+			c.TaskStateR[args.TaskID].TaskStatus = Completed
 			c.NumReduceDone++
 			fmt.Println("[NumReduceDone]", c.NumReduceDone)
 			if c.NumReduceDone == c.NReduce {
 				fmt.Println("[OMG] c.NumReduceDone == c.NReduce")
-				reply.TaskWorker.WorkerTask.NReduce = c.NReduce
-				reply.TaskWorker.Status = Exit
+				reply.IfExit = true
 			}
 			if c.NumReduceDone == c.NReduce+1 {
 				c.Status = AllDone
 			}
-			reply.TaskWorker.WorkerTask.Type = Completed
 		}
 	}
 	return nil
@@ -180,7 +216,7 @@ func (c *Coordinator) SetTaskDone(args *TaskDoneArgs, reply *TaskDoneReply) erro
 
 // an example RPC handler.
 //
-// the RPC argument and reply types are defined in rpc.go.
+// the RPC argument and reply TaskStatuss are defined in rpc.go.
 func (c *Coordinator) Example(args *ExampleArgs, reply *ExampleReply) error {
 	reply.Y = args.X + 1
 	return nil

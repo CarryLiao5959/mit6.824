@@ -10,7 +10,10 @@ import (
 	"hash/fnv"
 	"os"
 	"strconv"
+	"time"
 )
+
+const MaxTaskRunTime = 10 * time.Second
 
 // TaskType
 const (
@@ -20,14 +23,15 @@ const (
 )
 
 type Task struct {
-	Type    int
-	File    string
-	ID      int
-	NMap    int
-	NReduce int
+	TaskStatus      int
+	File      string
+	ID        int
+	NMap      int
+	NReduce   int
+	StartTime time.Time
 }
 
-// Worker Status
+// WorkerStatus
 const (
 	MapWork = iota
 	ReduceWork
@@ -35,27 +39,26 @@ const (
 	Exit
 )
 
-type WorkerInfo struct {
-	Status     int
-	ID         int
-	WorkerTask Task
-}
-
 type RequestTaskArgs struct {
+	WorkerAlive  bool
 	RequestWords string
 }
 
 type RequestTaskReply struct {
-	WorkerInfoReply WorkerInfo
-	ReplyWords      string
+	WorkerStatus int
+	WorkerTask   Task
+	ReplyWords   string
 }
 
 type TaskDoneArgs struct {
+	WorkerAlive  bool
 	TaskDone bool
+	TaskID   int
 }
 
 type TaskDoneReply struct {
-	TaskWorker WorkerInfo
+	ACK    bool
+	IfExit bool
 }
 
 // Map functions return a slice of KeyValue.

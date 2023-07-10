@@ -8,7 +8,6 @@ import (
 	"log"
 	"net/rpc"
 	"os"
-	"plugin"
 	"sort"
 	"strconv"
 	"strings"
@@ -20,94 +19,66 @@ func Worker(mapf func(string, string) []KeyValue, reducef func(string, []string)
 	flag := true
 
 	for flag {
-		myWorkerInfo := WorkerInfo{}
-		callRequestTask(&myWorkerInfo)
-		fmt.Println("[nReduce]",myWorkerInfo.WorkerTask.NReduce)
-		LOOP:
-		switch myWorkerInfo.Status {
+		reply := RequestTaskReply{}
+		reply = callRequestTask()
+		fmt.Println("[nReduce]", reply.WorkerTask.NReduce)
+	LOOP:
+		switch reply.WorkerStatus {
 		case MapWork:
 			{
 				fmt.Println("[MapWork]")
-				fmt.Println(myWorkerInfo.Status, myWorkerInfo.ID)
-				MapAndStore(myWorkerInfo)
-				setTaskDone(true, &myWorkerInfo)
+				MapAndStore(mapf, reducef, reply.WorkerTask)
+				setTaskDone(true, reply.WorkerTask.ID)
 			}
 		case ReduceWork:
 			{
 				fmt.Println("[ReduceWork]")
-				fmt.Println(myWorkerInfo.Status, myWorkerInfo.ID)
-				ReduceAndStore(myWorkerInfo)
-				setTaskDone(true, &myWorkerInfo)
-				if myWorkerInfo.Status == Exit{
+				ReduceAndStore(reducef, reply.WorkerTask)
+				taskDoneReply := setTaskDone(true, reply.WorkerTask.ID)
+				if taskDoneReply.IfExit {
+					reply.WorkerStatus = Exit
 					goto LOOP
 				}
 			}
 		case Waiting:
 			{
 				fmt.Println("[Waiting]")
-				fmt.Println(myWorkerInfo.Status, myWorkerInfo.ID)
-				time.Sleep(time.Second)
+				time.Sleep(2 * time.Second)
 			}
 		case Exit:
 			{
 				fmt.Println("[Exit]")
-				fmt.Println(myWorkerInfo.Status, myWorkerInfo.ID)
-				setTaskDone(true, &myWorkerInfo)
+				setTaskDone(true, reply.WorkerTask.ID)
 				flag = false
 			}
 		}
 	}
 }
 
-func callRequestTask(myWorkerInfo *WorkerInfo) {
-	args := RequestTaskArgs{}
-	args.RequestWords = "[RequestWords]"
+func callRequestTask() RequestTaskReply {
+	fmt.Println("[callRequestTask]")
+	args := RequestTaskArgs{WorkerAlive: true, RequestWords: "[RequestWords]"}
 	reply := RequestTaskReply{}
 	ok := call("Coordinator.RequestTaskHandler", &args, &reply)
-	if ok {
-		fmt.Println("[reply.ReplyWords]", reply.ReplyWords)
-		fmt.Println("[reply.WorkerInfoReply.Status]", reply.WorkerInfoReply.Status)
-		if reply.WorkerInfoReply.Status == MapWork {
-			if reply.WorkerInfoReply.WorkerTask.File == "" {
-				myWorkerInfo.Status = Waiting
-			} else {
-				myWorkerInfo.Status = MapWork
-				myWorkerInfo.ID = 0
-			}
-		} else if reply.WorkerInfoReply.Status == ReduceWork {
-			if reply.WorkerInfoReply.WorkerTask.File == "" {
-				myWorkerInfo.Status = Waiting
-			} else {
-				myWorkerInfo.Status = ReduceWork
-				myWorkerInfo.ID = 0
-			}
-		} else if reply.WorkerInfoReply.Status == AllDone {
-			myWorkerInfo.Status = Exit
-		}
-		myWorkerInfo.WorkerTask = reply.WorkerInfoReply.WorkerTask
-		fmt.Println("[callRequestTask nReduce]",reply.WorkerInfoReply.WorkerTask.NReduce)
-	} else {
-		fmt.Printf("[callRequestTask Fail]\n")
+	if !ok {
+		log.Fatal("[callRequestTask Fail]\n")
 	}
-	fmt.Println("[WorkerTask.File]", reply.WorkerInfoReply.WorkerTask.File)
-	fmt.Println("[myWorkerInfo.Status]", myWorkerInfo.Status)
+	fmt.Println("[reply.ReplyWords]", reply.ReplyWords)
+	fmt.Println("[callRequestTask nReduce]", reply.WorkerTask.NReduce)
+	fmt.Println("[WorkerTask.File]", reply.WorkerTask.File)
+	return reply
 }
 
-func setTaskDone(done bool, myWorkerInfo *WorkerInfo) {
+func setTaskDone(done bool, taskIndex int) TaskDoneReply {
 
-	args := TaskDoneArgs{TaskDone: done}
+	args := TaskDoneArgs{WorkerAlive: true, TaskDone: done, TaskID: taskIndex}
 	reply := TaskDoneReply{}
 
 	ok := call("Coordinator.SetTaskDone", &args, &reply)
-	if ok {
-		myWorkerInfo.Status = reply.TaskWorker.Status
-		fmt.Println("[myWorkerInfo.Status]", myWorkerInfo.Status)
-		if myWorkerInfo.Status == Exit {
-			fmt.Println("[OMG] myWorkerInfo.Status == Exit")
-		}
-	} else {
-		fmt.Println("[SetTaskDone Fail]")
+	if !ok {
+		log.Fatal("[SetTaskDone Fail]")
 	}
+	return reply
 }
 
 // send an RPC request to the coordinator, wait for the response.
@@ -139,12 +110,9 @@ func (a ByKey) Len() int           { return len(a) }
 func (a ByKey) Swap(i, j int)      { a[i], a[j] = a[j], a[i] }
 func (a ByKey) Less(i, j int) bool { return a[i].Key < a[j].Key }
 
-func MapAndStore(myWorkerInfo WorkerInfo) {
-	nReduce := myWorkerInfo.WorkerTask.NReduce
-
-	filename := myWorkerInfo.WorkerTask.File
-	mapf, reducef := loadPlugin(os.Args[1])
-
+func MapAndStore(mapf func(string, string) []KeyValue, reducef func(string, []string) string, task Task) {
+	nReduce := task.NReduce
+	filename := task.File
 	file, err := os.Open(filename)
 	if err != nil {
 		log.Fatalf("cannot open %v", filename)
@@ -154,12 +122,9 @@ func MapAndStore(myWorkerInfo WorkerInfo) {
 		log.Fatalf("cannot read %v", filename)
 	}
 	file.Close()
-	fmt.Println("[nReduce]", nReduce)
 
 	// Map
-	maped := []KeyValue{}
-	maped = mapf(filename, string(content))
-
+	maped := mapf(filename, string(content))
 	sort.Sort(ByKey(maped))
 
 	// Reduce
@@ -180,36 +145,30 @@ func MapAndStore(myWorkerInfo WorkerInfo) {
 		i = j
 	}
 
-	// -> nReduce
-	HashedKV := make([][]KeyValue, nReduce)
-	for _, kv := range reduced {
-		HashedKV[ihash(kv.Key)%nReduce] = append(HashedKV[ihash(kv.Key)%nReduce], kv)
-	}
-
 	// Store
 	for i := 0; i < nReduce; i++ {
-		oname := "mr-tmp-" + strconv.Itoa(myWorkerInfo.WorkerTask.ID) + "-" + strconv.Itoa(i)
+		oname := "mr-tmp-" + strconv.Itoa(task.ID) + "-" + strconv.Itoa(i)
 		ofile, _ := os.Create(oname)
 		// ofile, _ := os.Create("../../MapReduce/result/" + oname)
 		// ofile, _ := os.Create("./mr-tmp/" + oname)
 		fmt.Println("[Store Success]", oname)
 		enc := json.NewEncoder(ofile)
-		for _, kv := range HashedKV[i] {
-			enc.Encode(kv)
+		for _, kv := range reduced {
+			// -> nReduce
+			if ihash(kv.Key)%nReduce == i {
+				enc.Encode(&kv)
+			}
 		}
 		ofile.Close()
 	}
-
-	myWorkerInfo.WorkerTask.Type = Completed
 }
 
-func ReduceAndStore(myWorkerInfo WorkerInfo) {
+func ReduceAndStore(reducef func(string, []string) string, task Task) {
 	// nReduce := myWorkerInfo.WorkerTask.NReduce
-	nMap := myWorkerInfo.WorkerTask.NMap
-	id := myWorkerInfo.WorkerTask.ID
+	nMap := task.NMap
+	id := task.ID
 
-	filenameprefix := myWorkerInfo.WorkerTask.File
-	// reducef := loadPluginReduce(os.Args[1])
+	filenameprefix := task.File
 
 	intermediate := []KeyValue{}
 
@@ -249,7 +208,7 @@ func ReduceAndStore(myWorkerInfo WorkerInfo) {
 		}
 
 		sum := 0
-		OuterLoop:
+	OuterLoop:
 		for _, v := range values {
 			for _, runeValue := range v {
 				if runeValue < '0' || runeValue > '9' {
@@ -268,7 +227,7 @@ func ReduceAndStore(myWorkerInfo WorkerInfo) {
 	}
 
 	// Store
-	index := myWorkerInfo.WorkerTask.ID
+	index := task.ID
 	oname := "mr-out-" + strconv.Itoa(index)
 	ofile, err := os.Create(oname)
 	// ofile, err := os.Create("../../MapReduce/result/" + oname)
@@ -285,14 +244,12 @@ func ReduceAndStore(myWorkerInfo WorkerInfo) {
 			log.Fatalf("cannot write to %v", oname)
 		}
 	}
-
-	myWorkerInfo.WorkerTask.Type = Completed
 }
 
-func MergeFile(nReduce int){
+func MergeFile(nReduce int) {
 	intermediate := []KeyValue{}
 
-	for i:=0 ; i < nReduce; i++ {
+	for i := 0; i < nReduce; i++ {
 		filename := "mr-out-" + strconv.Itoa(i)
 		// filename := "../../MapReduce/result/mr-out-" + strconv.Itoa(i)
 		// filename := "./mr-tmp/mr-out-" + strconv.Itoa(i)
@@ -328,86 +285,4 @@ func MergeFile(nReduce int){
 		fmt.Fprintf(ofile, "%v %v\n", kv.Key, kv.Value)
 	}
 	ofile.Close()
-}
-
-
-func loadPlugin(filename string) (func(string, string) []KeyValue, func(string, []string) string) {
-
-	p, err := plugin.Open(filename)
-	if err != nil {
-		log.Fatalf("cannot load plugin %v", filename)
-	}
-
-	xmapf, err := p.Lookup("Map")
-	if err != nil {
-		log.Fatalf("cannot find Map in %v", filename)
-	}
-
-	mapf := xmapf.(func(string, string) []KeyValue)
-
-	xreducef, err := p.Lookup("Reduce")
-	if err != nil {
-		log.Fatalf("cannot find Reduce in %v", filename)
-	}
-	reducef := xreducef.(func(string, []string) string)
-
-	return mapf, reducef
-}
-
-func loadPluginMap(filename string) func(string, string) []KeyValue {
-	p, err := plugin.Open(filename)
-	if err != nil {
-		log.Fatalf("cannot load plugin %v", filename)
-	}
-
-	xmapf, err := p.Lookup("Map")
-	if err != nil {
-		log.Fatalf("cannot find Map in %v", filename)
-	}
-
-	mapf := xmapf.(func(string, string) []KeyValue)
-	return mapf
-}
-
-func loadPluginReduce(filename string) func(string, []string) string {
-	p, err := plugin.Open(filename)
-	if err != nil {
-		log.Fatalf("cannot load plugin %v", filename)
-	}
-
-	xreducef, err := p.Lookup("Reduce")
-	if err != nil {
-		log.Fatalf("cannot find Reduce in %v", filename)
-	}
-	reducef := xreducef.(func(string, []string) string)
-
-	return reducef
-}
-
-// example function to show how to make an RPC call to the coordinator.
-//
-// the RPC argument and reply types are defined in rpc.go.
-func CallExample() {
-
-	// declare an argument structure.
-	args := ExampleArgs{}
-
-	// fill in the argument(s).
-	args.X = 99
-
-	// declare a reply structure.
-	reply := ExampleReply{}
-
-	// send the RPC request, wait for the reply.
-	// the "Coordinator.Example" tells the
-	// receiving server that we'd like to call
-	// the Example() method of struct Coordinator.
-	ok := call("Coordinator.Example", &args, &reply)
-
-	if ok {
-		// reply.Y should be 100.
-		fmt.Printf("reply.Y %v\n", reply.Y)
-	} else {
-		fmt.Printf("call failed!\n")
-	}
 }

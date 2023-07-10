@@ -1,13 +1,10 @@
 [mrWorker]
+[callRequestTask]
 [reply.ReplyWords] [RequestMapTask Success]
-[reply.WorkerInfoReply.Status] 0
 [callRequestTask nReduce] 10
 [WorkerTask.File] pg-being_ernest.txt
-[myWorkerInfo.Status] 0
 [nReduce] 10
 [MapWork]
-0 0
-[nReduce] 10
 [Store Success] mr-tmp-0-0
 [Store Success] mr-tmp-0-1
 [Store Success] mr-tmp-0-2
@@ -18,16 +15,12 @@
 [Store Success] mr-tmp-0-7
 [Store Success] mr-tmp-0-8
 [Store Success] mr-tmp-0-9
-[myWorkerInfo.Status] 0
+[callRequestTask]
 [reply.ReplyWords] [RequestMapTask Success]
-[reply.WorkerInfoReply.Status] 0
 [callRequestTask nReduce] 10
 [WorkerTask.File] pg-dorian_gray.txt
-[myWorkerInfo.Status] 0
 [nReduce] 10
 [MapWork]
-0 0
-[nReduce] 10
 [Store Success] mr-tmp-1-0
 [Store Success] mr-tmp-1-1
 [Store Success] mr-tmp-1-2
@@ -38,16 +31,12 @@
 [Store Success] mr-tmp-1-7
 [Store Success] mr-tmp-1-8
 [Store Success] mr-tmp-1-9
-[myWorkerInfo.Status] 0
+[callRequestTask]
 [reply.ReplyWords] [RequestMapTask Success]
-[reply.WorkerInfoReply.Status] 0
 [callRequestTask nReduce] 10
 [WorkerTask.File] pg-frankenstein.txt
-[myWorkerInfo.Status] 0
 [nReduce] 10
 [MapWork]
-0 0
-[nReduce] 10
 [Store Success] mr-tmp-2-0
 [Store Success] mr-tmp-2-1
 [Store Success] mr-tmp-2-2
@@ -58,16 +47,12 @@
 [Store Success] mr-tmp-2-7
 [Store Success] mr-tmp-2-8
 [Store Success] mr-tmp-2-9
-[myWorkerInfo.Status] 0
+[callRequestTask]
 [reply.ReplyWords] [RequestMapTask Success]
-[reply.WorkerInfoReply.Status] 0
 [callRequestTask nReduce] 10
 [WorkerTask.File] pg-grimm.txt
-[myWorkerInfo.Status] 0
 [nReduce] 10
 [MapWork]
-0 0
-[nReduce] 10
 [Store Success] mr-tmp-3-0
 [Store Success] mr-tmp-3-1
 [Store Success] mr-tmp-3-2
@@ -78,16 +63,12 @@
 [Store Success] mr-tmp-3-7
 [Store Success] mr-tmp-3-8
 [Store Success] mr-tmp-3-9
-[myWorkerInfo.Status] 0
+[callRequestTask]
 [reply.ReplyWords] [RequestMapTask Success]
-[reply.WorkerInfoReply.Status] 0
 [callRequestTask nReduce] 10
 [WorkerTask.File] pg-huckleberry_finn.txt
-[myWorkerInfo.Status] 0
 [nReduce] 10
 [MapWork]
-0 0
-[nReduce] 10
 [Store Success] mr-tmp-4-0
 [Store Success] mr-tmp-4-1
 [Store Success] mr-tmp-4-2
@@ -98,16 +79,12 @@
 [Store Success] mr-tmp-4-7
 [Store Success] mr-tmp-4-8
 [Store Success] mr-tmp-4-9
-[myWorkerInfo.Status] 0
+[callRequestTask]
 [reply.ReplyWords] [RequestMapTask Success]
-[reply.WorkerInfoReply.Status] 0
 [callRequestTask nReduce] 10
 [WorkerTask.File] pg-metamorphosis.txt
-[myWorkerInfo.Status] 0
 [nReduce] 10
 [MapWork]
-0 0
-[nReduce] 10
 [Store Success] mr-tmp-5-0
 [Store Success] mr-tmp-5-1
 [Store Success] mr-tmp-5-2
@@ -118,16 +95,12 @@
 [Store Success] mr-tmp-5-7
 [Store Success] mr-tmp-5-8
 [Store Success] mr-tmp-5-9
-[myWorkerInfo.Status] 0
+[callRequestTask]
 [reply.ReplyWords] [RequestMapTask Success]
-[reply.WorkerInfoReply.Status] 0
 [callRequestTask nReduce] 10
 [WorkerTask.File] pg-sherlock_holmes.txt
-[myWorkerInfo.Status] 0
 [nReduce] 10
 [MapWork]
-0 0
-[nReduce] 10
 [Store Success] mr-tmp-6-0
 [Store Success] mr-tmp-6-1
 [Store Success] mr-tmp-6-2
@@ -138,16 +111,12 @@
 [Store Success] mr-tmp-6-7
 [Store Success] mr-tmp-6-8
 [Store Success] mr-tmp-6-9
-[myWorkerInfo.Status] 0
+[callRequestTask]
 [reply.ReplyWords] [RequestMapTask Success]
-[reply.WorkerInfoReply.Status] 0
 [callRequestTask nReduce] 10
 [WorkerTask.File] pg-tom_sawyer.txt
-[myWorkerInfo.Status] 0
 [nReduce] 10
 [MapWork]
-0 0
-[nReduce] 10
 [Store Success] mr-tmp-7-0
 [Store Success] mr-tmp-7-1
 [Store Success] mr-tmp-7-2
@@ -158,15 +127,12 @@
 [Store Success] mr-tmp-7-7
 [Store Success] mr-tmp-7-8
 [Store Success] mr-tmp-7-9
-[myWorkerInfo.Status] 1
+[callRequestTask]
 [reply.ReplyWords] [RequestReduceTask Success]
-[reply.WorkerInfoReply.Status] 1
 [callRequestTask nReduce] 10
 [WorkerTask.File] mr-tmp-
-[myWorkerInfo.Status] 1
 [nReduce] 10
 [ReduceWork]
-1 0
 [Reduce Open] mr-tmp-0-0
 [Reduce Open] mr-tmp-1-0
 [Reduce Open] mr-tmp-2-0
@@ -176,15 +142,12 @@
 [Reduce Open] mr-tmp-6-0
 [Reduce Open] mr-tmp-7-0
 [Store Success] mr-out-0
-[myWorkerInfo.Status] 0
+[callRequestTask]
 [reply.ReplyWords] [RequestReduceTask Success]
-[reply.WorkerInfoReply.Status] 1
 [callRequestTask nReduce] 10
 [WorkerTask.File] mr-tmp-
-[myWorkerInfo.Status] 1
 [nReduce] 10
 [ReduceWork]
-1 0
 [Reduce Open] mr-tmp-0-1
 [Reduce Open] mr-tmp-1-1
 [Reduce Open] mr-tmp-2-1
@@ -194,15 +157,12 @@
 [Reduce Open] mr-tmp-6-1
 [Reduce Open] mr-tmp-7-1
 [Store Success] mr-out-1
-[myWorkerInfo.Status] 0
+[callRequestTask]
 [reply.ReplyWords] [RequestReduceTask Success]
-[reply.WorkerInfoReply.Status] 1
 [callRequestTask nReduce] 10
 [WorkerTask.File] mr-tmp-
-[myWorkerInfo.Status] 1
 [nReduce] 10
 [ReduceWork]
-1 0
 [Reduce Open] mr-tmp-0-2
 [Reduce Open] mr-tmp-1-2
 [Reduce Open] mr-tmp-2-2
@@ -212,15 +172,12 @@
 [Reduce Open] mr-tmp-6-2
 [Reduce Open] mr-tmp-7-2
 [Store Success] mr-out-2
-[myWorkerInfo.Status] 0
+[callRequestTask]
 [reply.ReplyWords] [RequestReduceTask Success]
-[reply.WorkerInfoReply.Status] 1
 [callRequestTask nReduce] 10
 [WorkerTask.File] mr-tmp-
-[myWorkerInfo.Status] 1
 [nReduce] 10
 [ReduceWork]
-1 0
 [Reduce Open] mr-tmp-0-3
 [Reduce Open] mr-tmp-1-3
 [Reduce Open] mr-tmp-2-3
@@ -230,15 +187,12 @@
 [Reduce Open] mr-tmp-6-3
 [Reduce Open] mr-tmp-7-3
 [Store Success] mr-out-3
-[myWorkerInfo.Status] 0
+[callRequestTask]
 [reply.ReplyWords] [RequestReduceTask Success]
-[reply.WorkerInfoReply.Status] 1
 [callRequestTask nReduce] 10
 [WorkerTask.File] mr-tmp-
-[myWorkerInfo.Status] 1
 [nReduce] 10
 [ReduceWork]
-1 0
 [Reduce Open] mr-tmp-0-4
 [Reduce Open] mr-tmp-1-4
 [Reduce Open] mr-tmp-2-4
@@ -248,15 +202,12 @@
 [Reduce Open] mr-tmp-6-4
 [Reduce Open] mr-tmp-7-4
 [Store Success] mr-out-4
-[myWorkerInfo.Status] 0
+[callRequestTask]
 [reply.ReplyWords] [RequestReduceTask Success]
-[reply.WorkerInfoReply.Status] 1
 [callRequestTask nReduce] 10
 [WorkerTask.File] mr-tmp-
-[myWorkerInfo.Status] 1
 [nReduce] 10
 [ReduceWork]
-1 0
 [Reduce Open] mr-tmp-0-5
 [Reduce Open] mr-tmp-1-5
 [Reduce Open] mr-tmp-2-5
@@ -266,15 +217,12 @@
 [Reduce Open] mr-tmp-6-5
 [Reduce Open] mr-tmp-7-5
 [Store Success] mr-out-5
-[myWorkerInfo.Status] 0
+[callRequestTask]
 [reply.ReplyWords] [RequestReduceTask Success]
-[reply.WorkerInfoReply.Status] 1
 [callRequestTask nReduce] 10
 [WorkerTask.File] mr-tmp-
-[myWorkerInfo.Status] 1
 [nReduce] 10
 [ReduceWork]
-1 0
 [Reduce Open] mr-tmp-0-6
 [Reduce Open] mr-tmp-1-6
 [Reduce Open] mr-tmp-2-6
@@ -284,15 +232,12 @@
 [Reduce Open] mr-tmp-6-6
 [Reduce Open] mr-tmp-7-6
 [Store Success] mr-out-6
-[myWorkerInfo.Status] 0
+[callRequestTask]
 [reply.ReplyWords] [RequestReduceTask Success]
-[reply.WorkerInfoReply.Status] 1
 [callRequestTask nReduce] 10
 [WorkerTask.File] mr-tmp-
-[myWorkerInfo.Status] 1
 [nReduce] 10
 [ReduceWork]
-1 0
 [Reduce Open] mr-tmp-0-7
 [Reduce Open] mr-tmp-1-7
 [Reduce Open] mr-tmp-2-7
@@ -302,15 +247,12 @@
 [Reduce Open] mr-tmp-6-7
 [Reduce Open] mr-tmp-7-7
 [Store Success] mr-out-7
-[myWorkerInfo.Status] 0
+[callRequestTask]
 [reply.ReplyWords] [RequestReduceTask Success]
-[reply.WorkerInfoReply.Status] 1
 [callRequestTask nReduce] 10
 [WorkerTask.File] mr-tmp-
-[myWorkerInfo.Status] 1
 [nReduce] 10
 [ReduceWork]
-1 0
 [Reduce Open] mr-tmp-0-8
 [Reduce Open] mr-tmp-1-8
 [Reduce Open] mr-tmp-2-8
@@ -320,15 +262,12 @@
 [Reduce Open] mr-tmp-6-8
 [Reduce Open] mr-tmp-7-8
 [Store Success] mr-out-8
-[myWorkerInfo.Status] 0
+[callRequestTask]
 [reply.ReplyWords] [RequestReduceTask Success]
-[reply.WorkerInfoReply.Status] 1
 [callRequestTask nReduce] 10
 [WorkerTask.File] mr-tmp-
-[myWorkerInfo.Status] 1
 [nReduce] 10
 [ReduceWork]
-1 0
 [Reduce Open] mr-tmp-0-9
 [Reduce Open] mr-tmp-1-9
 [Reduce Open] mr-tmp-2-9
@@ -338,8 +277,4 @@
 [Reduce Open] mr-tmp-6-9
 [Reduce Open] mr-tmp-7-9
 [Store Success] mr-out-9
-[myWorkerInfo.Status] 3
-[OMG] myWorkerInfo.Status == Exit
 [Exit]
-3 0
-[myWorkerInfo.Status] 0
