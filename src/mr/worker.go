@@ -17,41 +17,51 @@ import (
 // main/mrworker.go calls this function.
 func Worker(mapf func(string, string) []KeyValue, reducef func(string, []string) string) {
 	flag := true
-
 	for flag {
 		reply := RequestTaskReply{}
 		reply = callRequestTask()
 		fmt.Println("[nReduce]", reply.WorkerTask.NReduce)
-	LOOP:
-		switch reply.WorkerStatus {
-		case MapWork:
-			{
-				fmt.Println("[MapWork]")
-				MapAndStore(mapf, reducef, reply.WorkerTask)
-				setTaskDone(true, reply.WorkerTask.ID)
-			}
-		case ReduceWork:
-			{
-				fmt.Println("[ReduceWork]")
-				ReduceAndStore(reducef, reply.WorkerTask)
-				taskDoneReply := setTaskDone(true, reply.WorkerTask.ID)
-				if taskDoneReply.IfExit {
-					reply.WorkerStatus = Exit
-					goto LOOP
-				}
-			}
-		case Waiting:
-			{
-				fmt.Println("[Waiting]")
-				time.Sleep(2 * time.Second)
-			}
-		case Exit:
-			{
-				fmt.Println("[Exit]")
-				setTaskDone(true, reply.WorkerTask.ID)
-				flag = false
-			}
+		ret:=doTask(mapf,reducef,reply.WorkerStatus,reply.WorkerTask)
+		if ret == Exit{
+			MergeFile(reply.WorkerTask.NReduce)
+			flag = false
 		}
+	}
+}
+
+func doTask(mapf func(string, string) []KeyValue, reducef func(string, []string) string, WorkerStatus int, task Task) int {
+	switch WorkerStatus {
+	case MapWork:
+		{
+			fmt.Println("[MapWork]")
+			MapAndStore(mapf, reducef, task)
+			setTaskDone(true, task.ID)
+			return MapWork
+		}
+	case ReduceWork:
+		{
+			fmt.Println("[ReduceWork]")
+			DoReduce(reducef, task)
+			taskDoneReply := setTaskDone(true, task.ID)
+			if taskDoneReply.IfExit {
+				return Exit
+			}
+			return ReduceWork
+		}
+	case Waiting:
+		{
+			fmt.Println("[Waiting]")
+			time.Sleep(2 * time.Second)
+			return Waiting
+		}
+	case Exit:
+		{
+			fmt.Println("[Exit]")
+			setTaskDone(true, task.ID)
+			return Exit
+		}
+	default:
+		return -1;
 	}
 }
 
@@ -127,23 +137,8 @@ func MapAndStore(mapf func(string, string) []KeyValue, reducef func(string, []st
 	maped := mapf(filename, string(content))
 	sort.Sort(ByKey(maped))
 
-	// Reduce
-	i := 0
-	reduced := []KeyValue{}
-	for i < len(maped) {
-		j := i + 1
-		for j < len(maped) && maped[j].Key == maped[i].Key {
-			j++
-		}
-		values := []string{}
-		for k := i; k < j; k++ {
-			values = append(values, maped[k].Value)
-		}
-		output := reducef(maped[i].Key, values)
-
-		reduced = append(reduced, KeyValue{Key: maped[i].Key, Value: output})
-		i = j
-	}
+	// reduced := JustReduce(reducef, maped)
+	reduced := maped
 
 	// Store
 	for i := 0; i < nReduce; i++ {
@@ -163,19 +158,36 @@ func MapAndStore(mapf func(string, string) []KeyValue, reducef func(string, []st
 	}
 }
 
+func JustReduce(reducef func(string, []string) string, maped []KeyValue) []KeyValue{
+	// Reduce
+	i := 0
+	reduced := []KeyValue{}
+	for i < len(maped) {
+		j := i + 1
+		for j < len(maped) && maped[j].Key == maped[i].Key {
+			j++
+		}
+		values := []string{}
+		for k := i; k < j; k++ {
+			values = append(values, maped[k].Value)
+		}
+		output := reducef(maped[i].Key, values)
+
+		reduced = append(reduced, KeyValue{Key: maped[i].Key, Value: output})
+		i = j
+	}
+	return reduced
+}
+
 func ReduceAndStore(reducef func(string, []string) string, task Task) {
-	// nReduce := myWorkerInfo.WorkerTask.NReduce
 	nMap := task.NMap
 	id := task.ID
-
 	filenameprefix := task.File
 
 	intermediate := []KeyValue{}
 
 	for i := 0; i < nMap; i++ {
 		filename := filenameprefix + strconv.Itoa(i) + "-" + strconv.Itoa(id)
-		// filename := "../../MapReduce/result/" + filenameprefix + strconv.Itoa(i) + "-" + strconv.Itoa(id)
-		// filename := "./mr-tmp/" + filenameprefix + strconv.Itoa(i) + "-" + strconv.Itoa(id)
 		fmt.Println("[Reduce Open]", filename)
 		file, err := os.Open(filename)
 		if err != nil {
@@ -246,13 +258,56 @@ func ReduceAndStore(reducef func(string, []string) string, task Task) {
 	}
 }
 
+func DoReduce(reducef func(string, []string) string, task Task) error {
+	nMap := task.NMap
+	id := task.ID
+	filenameprefix := task.File
+
+	res := make(map[string][]string)
+
+	for i := 0; i < nMap; i++ {
+		filename := filenameprefix + strconv.Itoa(i) + "-" + strconv.Itoa(id)
+		file, err := os.Open(filename)
+		if err != nil {
+			log.Fatalf("cannot open %v", filename)
+			return err
+		}
+		dec := json.NewDecoder(file)
+		for {
+			var kv KeyValue
+			if err := dec.Decode(&kv); err != nil {
+				break
+			}
+			_, ok := res[kv.Key]
+			if !ok {
+				res[kv.Key] = make([]string, 0)
+			}
+			res[kv.Key] = append(res[kv.Key], kv.Value)
+		}
+		file.Close()
+	}
+	var keys []string
+	for k := range res {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+	index := task.ID
+	oname := "mr-out-" + strconv.Itoa(index)
+	ofile, _ := os.Create(oname)
+	for _, k := range keys {
+		output := reducef(k, res[k])
+		fmt.Fprintf(ofile, "%v %v\n", k, output)
+	}
+	ofile.Close()
+
+	return nil
+}
+
 func MergeFile(nReduce int) {
 	intermediate := []KeyValue{}
 
 	for i := 0; i < nReduce; i++ {
 		filename := "mr-out-" + strconv.Itoa(i)
-		// filename := "../../MapReduce/result/mr-out-" + strconv.Itoa(i)
-		// filename := "./mr-tmp/mr-out-" + strconv.Itoa(i)
 		file, err := os.Open(filename)
 		if err != nil {
 			log.Fatalf("cannot open %v", filename)
@@ -275,8 +330,6 @@ func MergeFile(nReduce int) {
 	sort.Sort(ByKey(intermediate))
 
 	oname := "mr-wc-all"
-	// oname := "../../MapReduce/result/mr-wc-all"
-	// oname := "./mr-tmp/mr-wc-all"
 	ofile, err := os.Create(oname)
 	if err != nil {
 		log.Fatalf("cannot create %v: %v", oname, err)
