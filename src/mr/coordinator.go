@@ -52,7 +52,7 @@ func MakeCoordinator(files []string, nReduce int) *Coordinator {
 	for i := range c.TaskState {
 		c.TaskState[i].TaskStatus = Idle
 	}
-	for i := 0; i < c.NReduce; i++{
+	for i := 0; i < c.NReduce; i++ {
 		c.TaskStateR[i].TaskStatus = Idle
 		task := Task{
 			TaskStatus: Idle,
@@ -62,7 +62,7 @@ func MakeCoordinator(files []string, nReduce int) *Coordinator {
 			NReduce:    c.NReduce,
 		}
 		c.ReduceTask <- task
-		fmt.Println("[Create ReduceTask]", task.ID, task.File)
+		fmt.Println("[Create ReduceTask]", task.File, task.ID)
 	}
 
 	c.server()

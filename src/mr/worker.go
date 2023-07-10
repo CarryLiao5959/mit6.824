@@ -21,8 +21,8 @@ func Worker(mapf func(string, string) []KeyValue, reducef func(string, []string)
 		reply := RequestTaskReply{}
 		reply = callRequestTask()
 		fmt.Println("[nReduce]", reply.WorkerTask.NReduce)
-		ret:=doTask(mapf,reducef,reply.WorkerStatus,reply.WorkerTask)
-		if ret == Exit{
+		ret := doTask(mapf, reducef, reply.WorkerStatus, reply.WorkerTask)
+		if ret == Exit {
 			MergeFile(reply.WorkerTask.NReduce)
 			flag = false
 		}
@@ -61,7 +61,7 @@ func doTask(mapf func(string, string) []KeyValue, reducef func(string, []string)
 			return Exit
 		}
 	default:
-		return -1;
+		return -1
 	}
 }
 
@@ -158,7 +158,7 @@ func MapAndStore(mapf func(string, string) []KeyValue, reducef func(string, []st
 	}
 }
 
-func JustReduce(reducef func(string, []string) string, maped []KeyValue) []KeyValue{
+func JustReduce(reducef func(string, []string) string, maped []KeyValue) []KeyValue {
 	// Reduce
 	i := 0
 	reduced := []KeyValue{}

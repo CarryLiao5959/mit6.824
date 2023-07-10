@@ -20,15 +20,16 @@ const (
 	Idle = iota
 	InProgress
 	Completed
+	Error
 )
 
 type Task struct {
-	TaskStatus      int
-	File      string
-	ID        int
-	NMap      int
-	NReduce   int
-	StartTime time.Time
+	TaskStatus int
+	File       string
+	ID         int
+	NMap       int
+	NReduce    int
+	StartTime  time.Time
 }
 
 // WorkerStatus
@@ -51,9 +52,9 @@ type RequestTaskReply struct {
 }
 
 type TaskDoneArgs struct {
-	WorkerAlive  bool
-	TaskDone bool
-	TaskID   int
+	WorkerAlive bool
+	TaskDone    bool
+	TaskID      int
 }
 
 type TaskDoneReply struct {

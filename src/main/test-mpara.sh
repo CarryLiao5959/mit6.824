@@ -64,12 +64,84 @@ rm -f mr-*
 (cd ../../mrapps && go build $RACE -buildmode=plugin indexer.go) || exit 1
 (cd ../../mrapps && go build $RACE -buildmode=plugin mtiming.go) || exit 1
 (cd ../../mrapps && go build $RACE -buildmode=plugin rtiming.go) || exit 1
-
+(cd ../../mrapps && go build $RACE -buildmode=plugin jobcount.go) || exit 1
+(cd ../../mrapps && go build $RACE -buildmode=plugin early_exit.go) || exit 1
+(cd ../../mrapps && go build $RACE -buildmode=plugin crash.go) || exit 1
+(cd ../../mrapps && go build $RACE -buildmode=plugin nocrash.go) || exit 1
 (cd .. && go build $RACE mrcoordinator.go) || exit 1
 (cd .. && go build $RACE mrworker.go) || exit 1
 (cd .. && go build $RACE mrsequential.go) || exit 1
 
 failed_any=0
+
+#########################################################
+# first word-count
+
+# generate the correct output
+../mrsequential ../../mrapps/wc.so ../pg*txt || exit 1
+sort mr-out-0 > mr-correct-wc.txt
+rm -f mr-out*
+
+echo '***' Starting wc test.
+
+maybe_quiet $TIMEOUT ../mrcoordinator ../pg*txt &
+pid=$!
+
+# give the coordinator time to create the sockets.
+sleep 1
+
+# start multiple workers.
+(maybe_quiet $TIMEOUT ../mrworker ../../mrapps/wc.so) &
+(maybe_quiet $TIMEOUT ../mrworker ../../mrapps/wc.so) &
+(maybe_quiet $TIMEOUT ../mrworker ../../mrapps/wc.so) &
+
+# wait for the coordinator to exit.
+wait $pid
+
+# since workers are required to exit when a job is completely finished,
+# and not before, that means the job has finished.
+sort mr-out* | grep . > mr-wc-all
+if cmp mr-wc-all mr-correct-wc.txt
+then
+  echo '---' wc test: PASS
+else
+  echo '---' wc output is not the same as mr-correct-wc.txt
+  echo '---' wc test: FAIL
+  failed_any=1
+fi
+
+# wait for remaining workers and coordinator to exit.
+wait
+
+#########################################################
+# now indexer
+rm -f mr-*
+
+# generate the correct output
+../mrsequential ../../mrapps/indexer.so ../pg*txt || exit 1
+sort mr-out-0 > mr-correct-indexer.txt
+rm -f mr-out*
+
+echo '***' Starting indexer test.
+
+maybe_quiet $TIMEOUT ../mrcoordinator ../pg*txt &
+sleep 1
+
+# start multiple workers
+maybe_quiet $TIMEOUT ../mrworker ../../mrapps/indexer.so &
+maybe_quiet $TIMEOUT ../mrworker ../../mrapps/indexer.so
+
+sort mr-out* | grep . > mr-indexer-all
+if cmp mr-indexer-all mr-correct-indexer.txt
+then
+  echo '---' indexer test: PASS
+else
+  echo '---' indexer output is not the same as mr-correct-indexer.txt
+  echo '---' indexer test: FAIL
+  failed_any=1
+fi
+
+wait
 
 #########################################################
 echo '***' Starting map parallelism test.
